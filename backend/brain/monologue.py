@@ -1,7 +1,55 @@
-import os
 from llm.llm_client import call_llm,call_llm_safe
+
+
+# =========================
+# 🧠 THINKING GATE
+# =========================
+def should_think(c):
+
+    needs = c.get("needs", {})
+
+    # survival mode = no thinking
+    if needs.get("hunger", 0) > 0.7:
+        return False
+
+    if needs.get("energy", 1) < 0.3:
+        return False
+
+    # already executing plan
+    if c.get("plan"):
+        return False
+
+    return True
+
+
+# =========================
+# 🧠 INTERNAL MONOLOGUE
+# =========================
 async def think(c, perception, memories):
-    if os.getenv("LLM_ENABLED","true").lower()!="true": return "I should respond to my current needs and situation."
+
+    # skip LLM most of the time
+    if not should_think(c):
+        return "..."
+
+    prompt = f"""
+You are {c.get("name")}.
+
+Perception:
+{perception}
+
+Memories:
+{memories}
+
+Describe your current internal thoughts briefly.
+"""
+
     try:
-        return (await call_llm_safe([{"role":"user","content":f"You are {c.get('name')} thinking privately. Return one short intent sentence. Perception={perception} Memories={memories} Goals={c.get('goals')} Emotion={c.get('emotion')}"}])).strip()[:240]
-    except Exception: return "I should keep going."
+        result = await call_llm([{"role": "user", "content": prompt}])
+
+        if isinstance(result, dict) and "message" in result:
+            return result["message"].get("content", "")
+
+        return str(result)
+
+    except Exception:
+        return "..."
