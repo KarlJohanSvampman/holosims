@@ -1,4 +1,6 @@
 import psycopg2, json, os
+from core.cache import get_world_cache, set_world_cache
+from core.cache import get_char_cache, set_char_cache
 
 conn = psycopg2.connect(
     dbname=os.getenv("POSTGRES_DB","sim"),
@@ -29,54 +31,67 @@ def init_db():
 
  
 def load_world(sim_id):
+
+    # 🔥 1. try cache
+    cached = get_world_cache(sim_id)
+    if cached:
+        return cached
+
+    # 🔥 2. fallback DB
     with conn.cursor() as cur:
         cur.execute("SELECT data FROM world WHERE simulation_id=%s", (sim_id,))
         row = cur.fetchone()
-        if row:
-            return row[0]
+        world = row[0] if row else {"tick": 0, "characters": {}}
 
-    # default world if none exists
-    return {
-        "tick": 0,
-        "characters": {}
-    }
+    # 🔥 3. cache it
+    set_world_cache(sim_id, world)
 
+    return world
 
 def save_world(sim_id, world):
     with conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO world (simulation_id, data)
-            VALUES (%s, %s)
-            ON CONFLICT (simulation_id)
-            DO UPDATE SET data=%s
+                INSERT INTO world (simulation_id, data)
+                VALUES (%s, %s)
+                ON CONFLICT (simulation_id)
+                DO UPDATE SET data=%s
             """, (sim_id, json.dumps(world), json.dumps(world)))
+
+    # 🔥 update cache
+    set_world_cache(sim_id, world)
 
 
 def save_character_safe(c, sim_id="default"):
+
     with conn:
         with conn.cursor() as cur:
-
-            # 🔒 lock row
-            cur.execute("""
-                SELECT data FROM characters
-                WHERE id=%s AND simulation_id=%s
-                FOR UPDATE
-            """, (c["id"], sim_id))
-
-            # update safely
             cur.execute("""
                 UPDATE characters
-                SET data=%s,
-                    updated_at=NOW()
+                SET data=%s, updated_at=NOW()
                 WHERE id=%s AND simulation_id=%s
             """, (json.dumps(c), c["id"], sim_id))
 
+    # 🔥 update cache immediately
+    set_char_cache(sim_id, c["id"], c)
+
 def load_character(cid, sim_id="default"):
+
+    # 🔥 cache first
+    cached = get_char_cache(sim_id, cid)
+    if cached:
+        return cached
+
+    # DB fallback
     with conn.cursor() as cur:
         cur.execute("""
-        SELECT data FROM characters
-        WHERE id=%s AND simulation_id=%s
+            SELECT data FROM characters
+            WHERE id=%s AND simulation_id=%s
         """, (cid, sim_id))
         row = cur.fetchone()
-        return row[0] if row else None
+        c = row[0] if row else None
+
+    if c:
+        set_char_cache(sim_id, cid, c)
+
+    return c
