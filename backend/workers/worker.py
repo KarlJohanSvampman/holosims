@@ -1,6 +1,6 @@
 import asyncio
 
-from redis_queue import dequeue
+from core.redis_queue import dequeue
 from db import load_character, save_character_safe, load_world, save_world
 # 🧠 Brain pipeline (same as your main.py)
 from brain.perception import perceive
