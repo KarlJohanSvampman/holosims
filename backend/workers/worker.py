@@ -1,6 +1,6 @@
 import asyncio
 
-from core.redis_queue import dequeue
+from core.redis_queue import dequeue_batch
 from db import load_character, save_character_safe, load_world, save_world
 # 🧠 Brain pipeline (same as your main.py)
 from brain.perception import perceive
@@ -15,7 +15,10 @@ from brain.executor import execute
 # 💾 persistence
 from db import save_character
 
+MAX_BATCH = 10
+MAX_CONCURRENCY = 5  # tune this!
 
+sem = asyncio.Semaphore(MAX_CONCURRENCY)
 # =========================
 # 🧠 FULL AGENT PIPELINE
 # =========================
@@ -83,21 +86,18 @@ async def process_job(job):
 # 🚀 WORKER LOOP
 # =========================
 async def worker_loop():
-
-    print("[WORKER] Started")
+    print("[WORKER] batching enabled")
 
     while True:
-        try:
-            job = dequeue()  # blocking Redis call
+        jobs = dequeue_batch(MAX_BATCH)
 
-            print(f"[WORKER] Processing job: {job}")
+        if not jobs:
+            await asyncio.sleep(0.05)
+            continue
 
-            await process_job(job)
+        tasks = [process_agent_job(job) for job in jobs]
 
-        except Exception as e:
-            print(f"[WORKER ERROR] {e}")
-
-
+        await asyncio.gather(*tasks, return_exceptions=True)
 # =========================
 # ENTRYPOINT
 # =========================

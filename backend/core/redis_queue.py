@@ -16,3 +16,14 @@ def enqueue(job: dict):
 def dequeue():
     _, job = r.brpop(QUEUE_NAME)
     return json.loads(job)
+
+def dequeue_batch(batch_size=10):
+    jobs = []
+
+    for _ in range(batch_size):
+        job = r.rpop(QUEUE_NAME)  # non-blocking
+        if not job:
+            break
+        jobs.append(json.loads(job))
+
+    return jobs

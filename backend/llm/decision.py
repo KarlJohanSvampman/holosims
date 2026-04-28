@@ -1,5 +1,5 @@
 import json, os
-from llm.ollama_client import call_ollama
+from llm.llm_client import call_llm,call_llm_safe
 from llm.llm_queue import enqueue
 ACTIONS=["wait","move","speak","yell","leave","go_work","go_interview","go_shopping","go_leisure","call_911","call_phone","end_call","evaluate_subjective"]
 EMOTIONS=["calm","playful","warm","awkward","annoyed","angry","furious","fearful","sad","smug","curious","suspicious"]
@@ -25,7 +25,7 @@ Schema:
 {{"thought":"brief private intent summary","emotion":"{'|'.join(EMOTIONS)}","speech_act":"{'|'.join(SPEECH)}","conversation_score":0,"topic":"","view_keywords":[],"action":{{"name":"{'|'.join(ACTIONS)}","target_character_id":"","target_tile":{{"x":0,"y":0}},"utterance":"","emergency_type":"police|fire|medical|","subject_type":"character|concept|object|","subject_ref":""}}}}
 """
     async def job():
-        return await call_ollama([{"role":"system","content":"Return valid JSON only. No markdown. No commentary."},{"role":"user","content":prompt}])
+        return await call_llm_safe([{"role":"system","content":"Return valid JSON only. No markdown. No commentary."},{"role":"user","content":prompt}])
     result=await enqueue(job)
     world.setdefault("llm_logs",[]).append({"prompt":prompt,"provider_result":result}); world["llm_logs"]=world["llm_logs"][-200:]
     try: data=json.loads(result.get("text") or "{}")

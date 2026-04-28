@@ -8,6 +8,7 @@ from core.redis_queue import enqueue
 from db import load_world, save_world
 from sim_loop import tick
 from systems.economy import household_economy
+from llm.llm_client import call_llm,call_llm_safe
 
 app = FastAPI(title="Sim Society Ultimate")
 clients = []
