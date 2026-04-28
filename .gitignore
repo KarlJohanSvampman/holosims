@@ -1,0 +1,103 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+.env/
+.env.*
+.venv/
+
+# =========================
+# FastAPI / Logs
+# =========================
+*.log
+logs/
+uvicorn.log
+
+# =========================
+# OS / Editor junk
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.local
+
+# =========================
+# Database
+# =========================
+*.sqlite3
+*.db
+*.db-journal
+
+# Postgres volumes (if mounted locally)
+pgdata/
+
+# =========================
+# Docker
+# =========================
+docker-data/
+*.tar
+
+# =========================
+# FAISS / Vector DB
+# =========================
+*.index
+*.faiss
+*.npy
+
+# =========================
+# Ollama / Models
+# =========================
+ollama-data/
+*.bin
+*.gguf
+
+# =========================
+# Frontend build artifacts
+# =========================
+dist/
+build/
+node_modules/
+
+# =========================
+# Coverage / Testing
+# =========================
+.coverage
+coverage/
+pytest_cache/
+htmlcov/
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
+*.tmp
+
+# =========================
+# Secrets / Keys
+# =========================
+*.pem
+*.key
+*.crt
+
+# =========================
+# Backup / old files
+# =========================
+*.bak
+*.old
+*.orig
