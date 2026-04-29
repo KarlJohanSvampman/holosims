@@ -1,6 +1,6 @@
 import asyncio
 
-from backend.core.redis_queue import dequeue_batch
+from core.redis_queue import dequeue_batch
 from db import load_character, save_character_safe, load_world, save_world
 # 🧠 Brain pipeline (same as your main.py)
 from brain.perception import perceive
@@ -13,7 +13,7 @@ from brain.decision_engine import decide_action
 from brain.executor import execute
 
 # 💾 persistence
-from db import save_character
+from db import save_character_safe, load_character
 
 MAX_BATCH = 10
 MAX_CONCURRENCY = 5  # tune this!

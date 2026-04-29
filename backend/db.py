@@ -1,6 +1,6 @@
 import psycopg2, json, os
-from backend.core.cache import get_world_cache, set_world_cache
-from backend.core.cache import get_char_cache, set_char_cache
+from core.cache import get_world_cache, set_world_cache
+from core.cache import get_char_cache, set_char_cache
 
 conn = psycopg2.connect(
     dbname=os.getenv("POSTGRES_DB","sim"),
