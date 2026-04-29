@@ -63,6 +63,7 @@ def update_world_tick(sim_id, tick):
 
 @app.on_event("startup")
 async def startup():
+    init_db()
     asyncio.create_task(loop())
 
 
