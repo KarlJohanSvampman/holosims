@@ -6,7 +6,10 @@ services:
     env_file: [.env]
     environment:
     - PYTHONPATH=/app
+    - RESOURCES_ROOT=/resources
     depends_on: [db, redis, ollama]
+    volumes:
+    - ./resources:/resources
   worker:
     build: ./backend
     command: python workers/worker.py

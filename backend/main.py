@@ -9,9 +9,13 @@ from db import load_world, save_world, init_db, conn
 from sim_loop import tick
 from systems.economy import household_economy
 from llm.llm_client import call_llm,call_llm_safe
+from api.view import router as view_router
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Sim Society Ultimate")
+app.mount("/resources", StaticFiles(directory="/resources"), name="resources")
 clients = []
+app.include_router(view_router)
 
 SIM_ID = "default"
 

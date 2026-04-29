@@ -44,7 +44,7 @@ def perceive(c, world, radius=5, max_agents=5):
         ):
             continue
 
-        if manhattan(c, other) <= radius:
+        if manhattan(c, other) <= radius and line_of_sight(c, other, world):
             nearby.append(other)
 
     # 🔥 SORT + LIMIT (NEW)
@@ -108,3 +108,48 @@ def perceive(c, world, radius=5, max_agents=5):
         "incidents": incidents,
         "focus": focus
     }
+
+
+def line_of_sight(a, b, world):
+
+    x0, y0 = a["x"], a["y"]
+    x1, y1 = b["x"], b["y"]
+
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+
+    x, y = x0, y0
+
+    n = 1 + dx + dy
+    x_inc = 1 if x1 > x0 else -1
+    y_inc = 1 if y1 > y0 else -1
+
+    error = dx - dy
+    dx *= 2
+    dy *= 2
+
+    blockers = {
+        (p["x"], p["y"])
+        for p in world.get("props", [])
+        if p.get("blocks_los")
+    }
+
+    # ALSO include closed doors
+    for b in world.get("buildings", []):
+        for d in b.get("doors", []):
+            if not d.get("is_open", True):
+            blockers.add((d["x"], d["y"]))
+            
+    for _ in range(n):
+
+        if (x, y) in blockers:
+            return False
+
+        if error > 0:
+            x += x_inc
+            error -= dy
+        else:
+            y += y_inc
+            error += dx
+
+    return True
