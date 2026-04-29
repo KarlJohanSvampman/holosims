@@ -1,10 +1,11 @@
 import asyncio
 
 from core.redis_queue import dequeue_batch
-from db import load_character, save_character_safe, load_world, save_world
-# 🧠 Brain pipeline (same as your main.py)
+from db import load_character, save_character_safe, load_world
+
+# 🧠 Brain pipeline
 from brain.perception import perceive
-from brain.memory import recall
+from brain.memory import recall_relevant, decay_memories
 from brain.monologue import think
 from brain.emotion import update_emotion
 from brain.goals import select_goal
@@ -12,38 +13,39 @@ from brain.planner import generate_plan
 from brain.decision_engine import decide_action
 from brain.executor import execute
 
-# 💾 persistence
-from db import save_character_safe, load_character
-
 MAX_BATCH = 10
-MAX_CONCURRENCY = 5  # tune this!
+MAX_CONCURRENCY = 5
 
 sem = asyncio.Semaphore(MAX_CONCURRENCY)
+
+
 # =========================
-# 🧠 FULL AGENT PIPELINE
+# AGENT PIPELINE
 # =========================
 async def process_agent(c, world):
-    # skip inactive agents
+
     if c.get("off_grid") or c.get("legal", {}).get("status") == "jailed":
         return
+
+    # 🔥 MEMORY DECAY
+    decay_memories(c)
 
     # perception
     perception = perceive(c, world)
 
-    # memory recall
-    memories = recall(
-        c,
-        " ".join(c.get("interests", []) + [c.get("emotion", "calm")]),
-        6
-    )
+    # 🔥 CONTEXT QUERY (FIXED)
+    query = f"{c.get('emotion')} {c.get('goal')}"
 
-    # internal monologue (LLM)
+    # 🔥 RELEVANT MEMORY
+    memories = recall_relevant(c, query, 6)
+
+    # thinking
     c["internal_thought"] = await think(c, perception, memories)
 
-    # emotion update
+    # emotion
     update_emotion(c)
 
-    # goal selection
+    # goal
     goal = select_goal(c)
 
     # planning
@@ -53,37 +55,39 @@ async def process_agent(c, world):
     # decision
     decision = await decide_action(c, world, perception, memories)
 
-    # execution
+    # execute
     execute(c, decision, world)
-
-    # persist character
-    save_character_safe(c)
 
 
 # =========================
-# 🔁 JOB ROUTER
+# JOB PROCESSING
 # =========================
 async def process_job(job):
 
     sim_id = job.get("simulation_id", "default")
     cid = job["character_id"]
 
-    # 🔥 load ONLY character
     c = load_character(cid, sim_id)
     if not c:
         return
 
-    # ⚠️ world read-only snapshot (no saving)
     world = load_world(sim_id)
 
-    # run brain
     await process_agent(c, world)
 
-    # 🔥 ONLY save character
     save_character_safe(c, sim_id)
 
+
 # =========================
-# 🚀 WORKER LOOP
+# WRAPPER (missing before)
+# =========================
+async def process_agent_job(job):
+    async with sem:
+        await process_job(job)
+
+
+# =========================
+# WORKER LOOP
 # =========================
 async def worker_loop():
     print("[WORKER] batching enabled")
@@ -98,6 +102,8 @@ async def worker_loop():
         tasks = [process_agent_job(job) for job in jobs]
 
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
 # =========================
 # ENTRYPOINT
 # =========================
