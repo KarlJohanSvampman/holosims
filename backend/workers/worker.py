@@ -33,8 +33,11 @@ async def process_agent(c, world):
     # perception
     perception = perceive(c, world)
 
-    # 🔥 CONTEXT QUERY (FIXED)
-    query = f"{c.get('emotion')} {c.get('goal')}"
+    query = f"""
+    emotion:{c.get('emotion')}
+    goal:{c.get('goal')}
+    nearby:{[p['type'] for p in perception.get('props', [])]}
+    """
 
     # 🔥 RELEVANT MEMORY
     memories = recall_relevant(c, query, 6)
