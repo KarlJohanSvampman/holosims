@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from core.redis_queue import enqueue
+from backend.core.redis_queue import enqueue
 from db import load_world, save_world
 from sim_loop import tick
 from systems.economy import household_economy

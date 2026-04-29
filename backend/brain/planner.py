@@ -83,7 +83,7 @@ Respond ONLY in JSON:
 """
 
     try:
-        result = await call_ollama([{"role": "user", "content": prompt}])
+        result = await call_llm([{"role": "user", "content": prompt}])
 
         if isinstance(result, dict) and "message" in result:
             text = result["message"].get("content", "")
