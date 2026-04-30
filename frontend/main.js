@@ -42,6 +42,19 @@ function updateResponders(state){
     responders[r.id].position.set((r.location?.x||0)-10,.25,(r.location?.y||0)-7);
   }
 }
+function updateDayNight(cal) {
+  const hour = cal?.hour ?? 12;
+
+  const t = hour / 24;
+  const intensity = Math.max(0.15, Math.sin(t * Math.PI));
+
+  const day = new THREE.Color(0x87ceeb);
+  const night = new THREE.Color(0x0b0f1a);
+
+  scene.background = day.clone().lerp(night, 1 - intensity);
+
+  light.intensity = intensity * 1.2;
+}
 canvas.addEventListener('click', (ev)=>{
   mouse.x=(ev.clientX/innerWidth)*2-1; mouse.y=-(ev.clientY/innerHeight)*2+1; raycaster.setFromCamera(mouse,camera);
   const hits=raycaster.intersectObjects(Object.values(mailboxes));
@@ -49,6 +62,19 @@ canvas.addEventListener('click', (ev)=>{
 });
 const ws=new WebSocket(`ws://${location.host}/ws`);
 ws.onopen=()=>{ document.getElementById('overlay').innerHTML='Connected'; ws.send('hello'); };
-ws.onmessage=(e)=>{ const state=JSON.parse(e.data); updateOverlay(state); updateMailboxes(state); updateResponders(state); for(const [id,c] of Object.entries(state.characters||{})) updateSim(id,c); };
+ws.onmessage = (e)=>{
+  const state = JSON.parse(e.data);
+
+  updateOverlay(state);
+  updateDayNight(state.calendar);
+
+  updateMailboxes(state);
+  updateResponders(state);
+
+  for(const [id,c] of Object.entries(state.characters||{})) {
+    updateSim(id,c);
+  }
+};
+
 function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera); }
 animate();

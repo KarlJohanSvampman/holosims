@@ -6,6 +6,7 @@ from brain.relationships import apply_interaction
 from brain.emotion import apply_emotion_inertia
 from systems.offgrid import send_offgrid
 from systems.emergency import create_911_call
+from systems.activities import update_activity
 
 
 EMOTION_BLOCKS = {
@@ -107,6 +108,11 @@ def _target(c, world, action):
 # MAIN EXECUTION
 # =========================
 def execute(c, decision, world):
+
+
+    if update_activity(c, world):
+        return  
+
     if not decision:
         return
 
