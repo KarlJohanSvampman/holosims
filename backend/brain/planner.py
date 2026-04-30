@@ -1,22 +1,19 @@
 import json
-from llm.llm_client import call_llm,call_llm_safe
+from llm.llm_client import call_llm, call_llm_safe
 
 # =========================
-# 🧠 REPLAN LOGIC
+# 🧠 REPLAN LOGIC (UNCHANGED)
 # =========================
 def should_replan(c, goal):
 
-    # no plan yet
     if not c.get("plan"):
         return True
 
     current = c.get("plan", {})
 
-    # goal changed
     if current.get("goal") != goal:
         return True
 
-    # plan exhausted
     if not current.get("steps"):
         return True
 
@@ -24,42 +21,83 @@ def should_replan(c, goal):
 
 
 # =========================
-# ⚡ SIMPLE FALLBACK PLAN
+# 🧱 ROOM HELPERS (NEW)
 # =========================
-def fallback_plan(goal):
+def find_room(world, x, y):
+    for b in world.get("buildings", []):
+        for r in b.get("rooms", []):
+            bnd = r["bounds"]
+            if bnd["x1"] <= x <= bnd["x2"] and bnd["y1"] <= y <= bnd["y2"]:
+                return r, b
+    return None, None
 
-    if goal == "eat":
-        return {
-            "goal": goal,
-            "steps": ["go_to_kitchen", "eat"]
-        }
 
-    if goal == "sleep":
-        return {
-            "goal": goal,
-            "steps": ["go_home", "sleep"]
-        }
+def find_door_to_room(building, room):
+    for d in building.get("doors", []):
+        if room["id"] in d.get("connects", []):
+            return d
+    return None
+
+
+# =========================
+# 🎯 TARGET RESOLUTION (NEW)
+# =========================
+def resolve_goal_target(world, goal):
 
     if goal == "toilet":
+        for p in world.get("props", []):
+            if p.get("type") == "toilet":
+                return p
+
+    if goal == "eat":
+        for p in world.get("props", []):
+            if p.get("type") in ["food", "fridge"]:
+                return p
+
+    return None
+
+
+# =========================
+# ⚡ FALLBACK PLAN (UPGRADED)
+# =========================
+def fallback_plan(c, goal, world):
+
+    target = resolve_goal_target(world, goal)
+
+    if not target:
         return {
             "goal": goal,
-            "steps": ["go_to_bathroom", "toilet"]
+            "steps": [{"name": "wait"}]
         }
 
-    if goal == "socialize":
-        return {
-            "goal": goal,
-            "steps": ["find_person", "talk"]
-        }
+    my_room, my_building = find_room(world, c["x"], c["y"])
+    tgt_room, tgt_building = find_room(world, target["x"], target["y"])
+
+    steps = []
+
+    # 🔥 if different room → go via door
+    if tgt_room and tgt_room != my_room:
+        door = find_door_to_room(tgt_building, tgt_room)
+        if door:
+            steps.append({
+                "name": "move",
+                "target_tile": {"x": door["x"], "y": door["y"]}
+            })
+
+    # final step → target
+    steps.append({
+        "name": "move",
+        "target_tile": {"x": target["x"], "y": target["y"]}
+    })
 
     return {
         "goal": goal,
-        "steps": ["idle"]
+        "steps": steps
     }
 
 
 # =========================
-# 🧠 LLM PLAN GENERATION
+# 🧠 LLM PLAN GENERATION (UNCHANGED)
 # =========================
 async def llm_plan(c, goal):
 
@@ -78,7 +116,7 @@ Generate a short plan.
 Respond ONLY in JSON:
 {{
   "goal": "{goal}",
-  "steps": ["step1", "step2", "..."]
+  "steps": ["step1", "step2"]
 }}
 """
 
@@ -92,42 +130,37 @@ Respond ONLY in JSON:
 
         parsed = json.loads(text)
 
-        # minimal validation
         if "steps" not in parsed:
-            return fallback_plan(goal)
+            return fallback_plan(c, goal, {})
 
         return parsed
 
     except Exception:
-        return fallback_plan(goal)
+        return fallback_plan(c, goal, {})
 
 
 # =========================
-# 🎯 MAIN ENTRY
+# 🎯 MAIN ENTRY (UPDATED)
 # =========================
-async def generate_plan(c, goal):
+async def generate_plan(c, goal, world):
 
-    # avoid unnecessary LLM calls
     if not should_replan(c, goal):
         return c.get("plan")
 
-    # ⚡ decide if LLM is worth it
     needs = c.get("needs", {})
 
     use_llm = True
 
-    # simple goals → no LLM needed
     if goal in ["eat", "sleep", "toilet"]:
         use_llm = False
 
-    # low energy → no planning overhead
     if needs.get("energy", 1) < 0.3:
         use_llm = False
 
     if use_llm:
         plan = await llm_plan(c, goal)
     else:
-        plan = fallback_plan(goal)
+        plan = fallback_plan(c, goal, world)
 
     c["plan"] = plan
     return plan

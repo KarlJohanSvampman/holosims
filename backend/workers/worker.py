@@ -53,7 +53,7 @@ async def process_agent(c, world):
 
     # planning
     if goal and not c.get("plan"):
-        c["plan"] = await generate_plan(c, goal)
+        c["plan"] = await generate_plan(c, goal, world)
 
     # decision
     decision = await decide_action(c, world, perception, memories)
