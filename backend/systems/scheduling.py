@@ -62,6 +62,27 @@ def generate_week_schedule(c, world):
 
     return schedule
 
+def adjust_for_household(c, world):
+
+    hid = c.get("household_id")
+    if not hid:
+        return
+
+    members = [
+        x for x in world["characters"].values()
+        if x.get("household_id") == hid
+    ]
+
+    # stagger work start times
+    offset = members.index(c) % 2
+
+    for day, blocks in c["schedule"]["week"].items():
+        for b in blocks:
+            if b["activity"] == "work":
+                hour = int(b["start"][:2])
+                hour += offset
+                b["start"] = f"{hour:02d}:00"
+
 def get_current_activity(c, world):
 
     cal = world["calendar"]

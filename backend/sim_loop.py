@@ -21,7 +21,7 @@ from systems.faction_ai import apply_faction_influence
 from brain.memory import decay_memories
 from brain.beliefs import polarization_drift, compute_alignment
 from brain.relationships import first_impression, update_relationship_state
-from systems.scheduling import generate_week_schedule
+from systems.scheduling import generate_week_schedul,adjust_for_household
 
 # =========================
 # 🕒 REAL-TIME CALENDAR
@@ -52,6 +52,7 @@ def tick(world):
     if world["calendar"]["weekday"] == "Monday" and world["calendar"]["hour"] == 0:
     for c in world["characters"].values():
         c["schedule"] = generate_week_schedule(c, world)
+         adjust_for_household(c, world)
 
     generate_job_listings(world)
     process_pending_effects(world)
