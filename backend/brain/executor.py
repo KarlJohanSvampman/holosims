@@ -10,6 +10,7 @@ from systems.activities import update_activity
 from systems.payments import attempt_pay_bills
 from systems.props import find_nearest_prop,get_prop_by_id
 from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor
+from systems.phone import make_call
 
 EMOTION_BLOCKS = {
     "fearful": {"smash": "leave", "yell": "leave", "speak": "leave"},
@@ -245,10 +246,13 @@ def execute(c, decision, world):
         create_911_call(world, c, action.get("emergency_type") or "police", report)
         c["last_utterance"] = report
 
-    elif name == "call_phone":
+    elif name == "call":
+        target = world["characters"].get(action["target"])
+        if not target:
+            return
         c["is_on_phone"] = True
-        c["last_utterance"] = utterance or "Calling..."
-
+        make_call(c, target, world)
+        store_memory(c,"Talked to {target['name']} on phone", tags=["social","phone"])
     elif name == "end_call":
         c["is_on_phone"] = False
     elif name == "wait_bus":
