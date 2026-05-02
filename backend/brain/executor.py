@@ -20,6 +20,22 @@ EMOTION_BLOCKS = {
 }
 
 
+def find_bus_at_stop(c, world):
+
+    for e in world["entities"].values():
+
+        bus = e["components"].get("bus")
+        pos = e["components"].get("position")
+
+        if not bus:
+            continue
+
+        if bus["state"] == "stopped":
+            if abs(pos["x"] - c["x"]) + abs(pos["y"] - c["y"]) <= 1:
+                return {"id": e["id"], "position": pos, "passengers": bus["passengers"]}
+
+    return None
+
 # =========================
 # PATHFINDING (NEW)
 # =========================
@@ -133,6 +149,7 @@ def execute(c, decision, world):
     c["last_action"] = name
     c["internal_thought"] = decision.get("thought", c.get("internal_thought", ""))
 
+
     # =========================
     # 🔥 UPDATED MOVEMENT
     # =========================
@@ -240,11 +257,21 @@ def execute(c, decision, world):
             "end_time": world["calendar"]["timestamp"] + 60  # 1 min wait
         }
     elif name == "board_bus":
-        destination = action.get("destination")
-        c["transport"] = {
-            "mode": "bus"
-        }
-        send_offgrid(c, world, destination.replace("go_", ""), 40)
+        bus = find_bus_at_stop(c, world)
+
+        if not bus:
+            return
+
+        if not is_adjacent(c, bus["position"]):
+            return
+
+        face_target(c, bus["position"])
+
+        bus["passengers"].append(c["id"])
+
+        c["transport"] = {"mode": "bus", "bus_id": bus["id"]}
+
+        send_offgrid(c, world, action.get("destination"), 40)
     elif name == "pay_bills":
         attempt_pay_bills(c, world)
     else:

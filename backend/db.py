@@ -1,6 +1,7 @@
 import psycopg2, json, os
 from core.cache import get_world_cache, set_world_cache
 from core.cache import get_char_cache, set_char_cache
+from world.generate_world import generate_initial_world
 
 conn = psycopg2.connect(
     dbname=os.getenv("POSTGRES_DB","sim"),
@@ -28,6 +29,9 @@ def init_db():
                 data JSONB
             );
             """)
+
+    world = generate_initial_world()
+    save_world("default", world)
 
  
 def load_world(sim_id):

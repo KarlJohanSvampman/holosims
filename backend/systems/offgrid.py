@@ -23,27 +23,17 @@ def _story(c, world, reason):
         if not parts: parts.append(f"had an unexpectedly meaningful {reason} outing"); tags+=["positive"]
     return {"id":f"story_{uuid.uuid4().hex[:6]}","summary":f"{c['name']} " + " and ".join(parts) + ".","emotion":emotion,"impact":impact,"tags":tags}
 def handle_return_transport(c, world):
+    if c.get("transport", {}).get("mode") == "bus":
 
-    transport = c.get("transport")
+        bus_id = c["transport"]["bus_id"]
 
-    if not transport:
-        return
+        bus = world["entities"].get(bus_id)
+        if bus:
+            pos = bus["components"]["position"]
 
-    if transport["mode"] == "bus":
-        stop = find_nearest_bus_stop(c, world)
+            c["x"], c["y"] = pos["x"], pos["y"]
 
-        if stop:
-            c["x"] = stop["x"]
-            c["y"] = stop["y"]
-
-    elif transport["mode"] == "car":
-        # return near home (simple for now)
-        home = c.get("home")
-
-        if home:
-            c["x"], c["y"] = home["x"], home["y"]
-
-    c["transport"] = None
+        c["transport"] = None
 def process_return(c, world):
     if not c.get("off_grid") or world["tick"]<(c.get("return_tick") or 0): return
     
