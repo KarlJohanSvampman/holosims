@@ -8,8 +8,9 @@ OFFGRID_GOALS = {
     "leisure": "go_leisure",
     "interview": "go_interview"
 }
+
 # =========================
-# 🧠 REPLAN LOGIC (UNCHANGED)
+# 🧠 REPLAN LOGIC
 # =========================
 def should_replan(c, goal):
 
@@ -28,7 +29,7 @@ def should_replan(c, goal):
 
 
 # =========================
-# 🧱 ROOM HELPERS (NEW)
+# 🧱 ROOM HELPERS
 # =========================
 def find_room(world, x, y):
     for b in world.get("buildings", []):
@@ -47,29 +48,49 @@ def find_door_to_room(building, room):
 
 
 # =========================
-# 🎯 TARGET RESOLUTION (NEW)
+# 🧠 PROP HELPERS (NEW)
 # =========================
-def resolve_goal_target(world, goal):
+def find_nearest_prop(c, world, prop_type):
+
+    best = None
+    best_dist = 999999
+
+    for p in world.get("props", []):
+        if p.get("type") != prop_type:
+            continue
+
+        dist = abs(p["x"] - c["x"]) + abs(p["y"] - c["y"])
+
+        if dist < best_dist:
+            best = p
+            best_dist = dist
+
+    return best
+
+
+# =========================
+# 🎯 TARGET RESOLUTION (UPDATED)
+# =========================
+def resolve_goal_target(c, world, goal):
 
     if goal == "toilet":
-        for p in world.get("props", []):
-            if p.get("type") == "toilet":
-                return p
+        return find_nearest_prop(c, world, "toilet")
 
     if goal == "eat":
-        for p in world.get("props", []):
-            if p.get("type") in ["food", "fridge"]:
-                return p
+        return find_nearest_prop(c, world, "fridge")
+
+    if goal == "sleep":
+        return find_nearest_prop(c, world, "bed")
 
     return None
 
 
 # =========================
-# ⚡ FALLBACK PLAN (UPGRADED)
+# ⚡ FALLBACK PLAN (UPGRADED WITH PROPS)
 # =========================
 def fallback_plan(c, goal, world):
 
-    target = resolve_goal_target(world, goal)
+    target = resolve_goal_target(c, world, goal)
 
     if not target:
         return {
@@ -82,7 +103,7 @@ def fallback_plan(c, goal, world):
 
     steps = []
 
-    # 🔥 if different room → go via door
+    # move via door if needed
     if tgt_room and tgt_room != my_room:
         door = find_door_to_room(tgt_building, tgt_room)
         if door:
@@ -91,11 +112,34 @@ def fallback_plan(c, goal, world):
                 "target_tile": {"x": door["x"], "y": door["y"]}
             })
 
-    # final step → target
-    steps.append({
-        "name": "move",
-        "target_tile": {"x": target["x"], "y": target["y"]}
-    })
+    # move to interaction spot (anchor or tile)
+    spot = target.get("interaction", {}).get("spot")
+
+    if spot:
+        steps.append({
+            "name": "move",
+            "target_tile": {"x": spot["x"], "y": spot["y"]}
+        })
+    else:
+        steps.append({
+            "name": "move",
+            "target_tile": {"x": target["x"], "y": target["y"]}
+        })
+
+    # interaction step (CRITICAL: pass prop id)
+    action_map = {
+        "toilet": "use_toilet",
+        "eat": "eat",
+        "sleep": "sleep"
+    }
+
+    action_name = action_map.get(goal)
+
+    if action_name:
+        steps.append({
+            "name": action_name,
+            "target_prop_id": target["id"]
+        })
 
     return {
         "goal": goal,
@@ -104,7 +148,7 @@ def fallback_plan(c, goal, world):
 
 
 # =========================
-# 🧠 LLM PLAN GENERATION (UNCHANGED)
+# 🧠 LLM PLAN GENERATION
 # =========================
 async def llm_plan(c, goal):
 
@@ -145,64 +189,25 @@ Respond ONLY in JSON:
     except Exception:
         return fallback_plan(c, goal, {})
 
+
+# =========================
+# 🚍 BUS HELPERS
+# =========================
 def find_nearest_bus_stop(c, world):
     stops = world.get("bus_stops", [])
     if not stops:
         return None
 
-    stops.sort(key=lambda s: abs(s["x"] - c["x"]) + abs(s["y"] - c["y"]))
-    return stops[0]
-# =========================
-# 🎯 MAIN ENTRY (UPDATED)
-# =========================
-async def generate_plan(c, goal, world):
+    return min(
+        stops,
+        key=lambda s: abs(s["x"] - c["x"]) + abs(s["y"] - c["y"])
+    )
 
-    if not should_replan(c, goal):
-        return c.get("plan")
-
-    # =========================
-    # 🚍 TRANSPORT-AWARE GOALS
-    # =========================
-    if goal in OFFGRID_GOALS:
-
-        action_name = OFFGRID_GOALS[goal]
-
-        steps = plan_transport_to_offgrid(c, world, action_name)
-
-        plan = {
-            "goal": goal,
-            "steps": steps
-        }
-
-        c["plan"] = plan
-        return plan
-
-    # =========================
-    # 🧠 NORMAL LOGIC
-    # =========================
-    needs = c.get("needs", {})
-
-    use_llm = True
-
-    if goal in ["eat", "sleep", "toilet"]:
-        use_llm = False
-
-    if needs.get("energy", 1) < 0.3:
-        use_llm = False
-
-    if use_llm:
-        plan = await llm_plan(c, goal)
-    else:
-        plan = fallback_plan(c, goal, world)
-
-    c["plan"] = plan
-    return plan
 
 def plan_transport_to_offgrid(c, world, action_name):
 
     steps = []
 
-    # decide transport
     use_bus = True
 
     wealth = c.get("wealth", 0)
@@ -223,5 +228,47 @@ def plan_transport_to_offgrid(c, world, action_name):
 
             return steps
 
-    # fallback → car
     return [{"name": action_name}]
+
+
+# =========================
+# 🎯 MAIN ENTRY
+# =========================
+async def generate_plan(c, goal, world):
+
+    if not should_replan(c, goal):
+        return c.get("plan")
+
+    # 🚍 transport-aware goals
+    if goal in OFFGRID_GOALS:
+
+        action_name = OFFGRID_GOALS[goal]
+
+        steps = plan_transport_to_offgrid(c, world, action_name)
+
+        plan = {
+            "goal": goal,
+            "steps": steps
+        }
+
+        c["plan"] = plan
+        return plan
+
+    # 🧠 normal planning
+    needs = c.get("needs", {})
+
+    use_llm = True
+
+    if goal in ["eat", "sleep", "toilet"]:
+        use_llm = False
+
+    if needs.get("energy", 1) < 0.3:
+        use_llm = False
+
+    if use_llm:
+        plan = await llm_plan(c, goal)
+    else:
+        plan = fallback_plan(c, goal, world)
+
+    c["plan"] = plan
+    return plan

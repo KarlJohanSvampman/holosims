@@ -8,8 +8,7 @@ from systems.offgrid import send_offgrid
 from systems.emergency import create_911_call
 from systems.activities import update_activity
 from systems.payments import attempt_pay_bills
-
-
+from systems.props import find_nearest_prop,get_prop_by_id
 EMOTION_BLOCKS = {
     "fearful": {"smash": "leave", "yell": "leave", "speak": "leave"},
     "sad": {"smash": "relax", "yell": "relax"},
@@ -274,6 +273,18 @@ def execute(c, decision, world):
         send_offgrid(c, world, action.get("destination"), 40)
     elif name == "pay_bills":
         attempt_pay_bills(c, world)
+    elif name == "use_toilet":
+
+        prop_id = action.get("target_prop_id")
+
+        prop = get_prop_by_id(world, prop_id)
+
+        if not prop:
+            return
+
+        snap_to_anchor(c, prop, "sit")
+
+        c["needs"]["bladder"] = 0    
     else:
         c["last_utterance"] = (
             "..."
