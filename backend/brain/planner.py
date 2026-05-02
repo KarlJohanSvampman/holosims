@@ -59,6 +59,17 @@ def find_nearest_prop(c, world, prop_type):
         if p.get("type") != prop_type:
             continue
 
+        # 🔥 NEW: skip fully occupied props
+        anchors = p.get("interaction", {}).get("anchors", [])
+
+        if anchors:
+            if all(a.get("occupied_by") for a in anchors):
+                continue
+
+        if not anchor:
+            c["plan"] = None
+            return
+
         dist = abs(p["x"] - c["x"]) + abs(p["y"] - c["y"])
 
         if dist < best_dist:

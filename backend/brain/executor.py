@@ -9,6 +9,8 @@ from systems.emergency import create_911_call
 from systems.activities import update_activity
 from systems.payments import attempt_pay_bills
 from systems.props import find_nearest_prop,get_prop_by_id
+from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor
+
 EMOTION_BLOCKS = {
     "fearful": {"smash": "leave", "yell": "leave", "speak": "leave"},
     "sad": {"smash": "relax", "yell": "relax"},
@@ -281,6 +283,13 @@ def execute(c, decision, world):
 
         if not prop:
             return
+
+        anchor = find_free_anchor(prop, "sit")
+
+        if not anchor:
+            return  # no free spot → fail gracefully
+
+        reserve_anchor(c, prop, anchor)
 
         snap_to_anchor(c, prop, "sit")
 

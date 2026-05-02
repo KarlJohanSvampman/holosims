@@ -70,3 +70,5 @@ def complete_activity(c, world):
 
     elif name == "sleep":
         c["needs"]["energy"] = 1.0
+
+    release_anchor(c, world)
