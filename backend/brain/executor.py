@@ -298,6 +298,15 @@ def execute(c, decision, world):
         snap_to_anchor(c, prop, "sit")
 
         c["needs"]["bladder"] = 0    
+    elif name == "reply_sms":
+
+        target = world["characters"].get(action["target"])
+        if not target:
+            return
+
+        from systems.phone import send_sms
+
+        send_sms(c, target, world, action.get("text", "..."))
     else:
         c["last_utterance"] = (
             "..."

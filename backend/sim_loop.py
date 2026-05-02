@@ -22,6 +22,7 @@ from brain.memory import decay_memories
 from brain.beliefs import polarization_drift, compute_alignment
 from brain.relationships import first_impression, update_relationship_state
 from systems.scheduling import generate_week_schedule,adjust_for_household
+from systems.messaging import deliver_messages
 
 # =========================
 # 🕒 REAL-TIME CALENDAR
@@ -53,7 +54,7 @@ def tick(world):
         for c in world["characters"].values():
             c["schedule"] = generate_week_schedule(c, world)
             adjust_for_household(c, world)
-
+    deliver_messages(world)
     generate_job_listings(world)
     process_pending_effects(world)
 

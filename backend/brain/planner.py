@@ -250,6 +250,15 @@ async def generate_plan(c, goal, world):
     if not should_replan(c, goal):
         return c.get("plan")
 
+
+    phone_action = check_phone(c, world)
+
+    if phone_action:
+        return {
+            "goal": "phone",
+            "steps": [phone_action]
+        }
+
     # 🚍 transport-aware goals
     if goal in OFFGRID_GOALS:
 
@@ -275,6 +284,8 @@ async def generate_plan(c, goal, world):
 
     if needs.get("energy", 1) < 0.3:
         use_llm = False
+
+
 
     if use_llm:
         plan = await llm_plan(c, goal)

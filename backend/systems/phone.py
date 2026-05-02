@@ -1,5 +1,6 @@
 import time
 from systems.relationships import apply_interaction
+from systems.messaging import queue_message
 
 
 def can_call(c, other):
@@ -15,24 +16,35 @@ def make_call(c, other, world):
     if not can_call(c, other):
         return False
 
-    # simulate conversation
+    # if other is busy → missed call
+    if other.get("activity"):
+
+        other.setdefault("phone", {}).setdefault("missed_calls", []).append({
+            "from": c["id"],
+            "time": time.time()
+        })
+
+        return False
+
+    # otherwise simulate conversation
+    from systems.relationships import apply_interaction
 
     apply_interaction(c, other, "statement")
     apply_interaction(other, c, "statement")
 
-    update_contact_time(c, other)
-    update_contact_time(other, c)
-
     return True
 
 
-def send_sms(c, other, text):
+def send_sms(c, other, world, text):
 
     contact = c.get("contacts", {}).get(other["id"], {})
+
     if not contact.get("has_number"):
         return False
 
-    c.setdefault("outbox", []).append({
+    queue_message(world, c["id"], other["id"], text)
+
+    c.setdefault("phone", {}).setdefault("outbox", []).append({
         "to": other["id"],
         "text": text,
         "time": time.time()
@@ -54,6 +66,6 @@ def choose_call_target(c, world):
     )
 
     return world["characters"].get(best[0])
-    
+
 def update_contact_time(a, b):
     a.setdefault("contacts", {}).setdefault(b["id"], {})["last_contact"] = time.time()

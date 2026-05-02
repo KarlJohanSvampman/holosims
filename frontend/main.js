@@ -178,6 +178,10 @@ function updateSim(id,c){
     anim = "drive";
   }
 
+  if(c.phone?.notifications?.length){
+    showPhoneIcon(c);
+}
+
   // play animation
   playAnimation(id, anim);
 
