@@ -2,6 +2,8 @@ import * as THREE from 'https://cdn.skypack.dev/three';
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
 
 const canvas=document.getElementById('c');
+const buses = {};
+const cars = {};
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x20242a);
 const camera=new THREE.OrthographicCamera(-12,12,8,-8,0.1,1000);
@@ -13,6 +15,56 @@ scene.add(new THREE.AmbientLight(0xffffff,.4));
 const light=new THREE.DirectionalLight(0xffffff,1); light.position.set(5,10,5); scene.add(light);
 scene.add(new THREE.GridHelper(24,24));
 
+function applyFacing(mesh, dir) {
+  const map = {
+    north: Math.PI,
+    south: 0,
+    east: -Math.PI/2,
+    west: Math.PI/2
+  };
+
+  mesh.rotation.y = map[dir] ?? 0;
+}
+
+function updateCars(state){
+
+  for(const p of state.props || []){
+
+    if(p.type !== "car") continue;
+
+    if(!cars[p.id]){
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1,0.5,0.5),
+        new THREE.MeshStandardMaterial({color:0x4444ff})
+      );
+      scene.add(mesh);
+      cars[p.id] = mesh;
+    }
+
+    cars[p.id].position.set(p.x-10,.3,p.y-7);
+  }
+}
+
+function updateBuses(state){
+
+  for(const [id,e] of Object.entries(state.entities || {})){
+
+    if(!e.components?.bus) continue;
+
+    const pos = e.components.position;
+
+    if(!buses[id]){
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5,0.7,0.7),
+        new THREE.MeshStandardMaterial({color:0xffaa00})
+      );
+      scene.add(mesh);
+      buses[id] = mesh;
+    }
+
+    buses[id].position.set(pos.x-10, .4, pos.y-7);
+  }
+}
 const sims={}, labels={}, bubbles={}, mailboxes={}, responders={};
 const raycaster=new THREE.Raycaster(); const mouse=new THREE.Vector2();
 
@@ -25,6 +77,9 @@ function createSim(id){
 function updateSim(id,c){
   if(!sims[id]) createSim(id);
   const mesh=sims[id]; mesh.position.set(c.x-10,.5,c.y-7);
+  if (c.facing) {
+    applyFacing(mesh, c.facing);
+  }
   const p=worldToScreen(mesh.position.clone().add(new THREE.Vector3(0,1.4,0)));
   labels[id].style.left=p.x+'px'; labels[id].style.top=p.y+'px'; labels[id].innerText=`${emojiForEmotion(c.emotion)} ${c.name}`;
   const txt=c.last_utterance || (c.is_on_phone?'📱':'');
@@ -67,7 +122,8 @@ ws.onmessage = (e)=>{
 
   updateOverlay(state);
   updateDayNight(state.calendar);
-
+  updateCars(state)
+  updateBuses(state);
   updateMailboxes(state);
   updateResponders(state);
 
