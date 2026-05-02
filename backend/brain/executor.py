@@ -7,6 +7,7 @@ from brain.emotion import apply_emotion_inertia
 from systems.offgrid import send_offgrid
 from systems.emergency import create_911_call
 from systems.activities import update_activity
+from systems.payments import attempt_pay_bills
 
 
 EMOTION_BLOCKS = {
@@ -210,8 +211,8 @@ def execute(c, decision, world):
         c["x"] = max(0, c["x"] - 1)
 
     elif name == "go_work":
+        c["transport"] = {"mode": "car"}
         send_offgrid(c, world, "work", 40)
-
     elif name == "go_interview":
         send_offgrid(c, world, "interview", 20)
 
@@ -232,7 +233,20 @@ def execute(c, decision, world):
 
     elif name == "end_call":
         c["is_on_phone"] = False
-
+    elif name == "wait_bus":
+        # small delay activity
+        c["activity"] = {
+            "name": "wait_bus",
+            "end_time": world["calendar"]["timestamp"] + 60  # 1 min wait
+        }
+    elif name == "board_bus":
+        destination = action.get("destination")
+        c["transport"] = {
+            "mode": "bus"
+        }
+        send_offgrid(c, world, destination.replace("go_", ""), 40)
+    elif name == "pay_bills":
+        attempt_pay_bills(c, world)
     else:
         c["last_utterance"] = (
             "..."

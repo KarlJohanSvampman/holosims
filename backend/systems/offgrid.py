@@ -22,8 +22,31 @@ def _story(c, world, reason):
         if reason=="shopping" and random.random()<env.get("cost_of_living_index",1)-.7: parts.append("was shocked by high prices"); emotion="annoyed"; impact["stress"]+=5; tags+=["money","cost_of_living"]
         if not parts: parts.append(f"had an unexpectedly meaningful {reason} outing"); tags+=["positive"]
     return {"id":f"story_{uuid.uuid4().hex[:6]}","summary":f"{c['name']} " + " and ".join(parts) + ".","emotion":emotion,"impact":impact,"tags":tags}
+def handle_return_transport(c, world):
+
+    transport = c.get("transport")
+
+    if not transport:
+        return
+
+    if transport["mode"] == "bus":
+        stop = find_nearest_bus_stop(c, world)
+
+        if stop:
+            c["x"] = stop["x"]
+            c["y"] = stop["y"]
+
+    elif transport["mode"] == "car":
+        # return near home (simple for now)
+        home = c.get("home")
+
+        if home:
+            c["x"], c["y"] = home["x"], home["y"]
+
+    c["transport"] = None
 def process_return(c, world):
     if not c.get("off_grid") or world["tick"]<(c.get("return_tick") or 0): return
+    
     reason=c.get("off_grid_reason") or "outing"; story=_story(c,world,reason)
     c["off_grid"]=False; c["off_grid_reason"]=None; c["return_tick"]=None
     c.setdefault("off_grid_story_arc",[]).append(story); c["off_grid_story_arc"]=c["off_grid_story_arc"][-8:]
@@ -32,5 +55,6 @@ def process_return(c, world):
         h=world["households"].get(c["household_id"]); earned=c.get("hourly_wage",15)*8
         if h: h["wealth"]+=earned
         story["summary"] += f" Earned ${earned:.0f}."
+    handle_return_transport(c, world)
     store_memory(c,story["summary"],.75,["offgrid"]+story["tags"],"offgrid_story",world["tick"],story=story)
     world.setdefault("events",[]).append({"id":story["id"],"type":"offgrid_story","character_id":c["id"],"tick":world["tick"],"story":story})

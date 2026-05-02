@@ -1,6 +1,13 @@
 import json
 from llm.llm_client import call_llm, call_llm_safe
 
+
+OFFGRID_GOALS = {
+    "work": "go_work",
+    "shopping": "go_shopping",
+    "leisure": "go_leisure",
+    "interview": "go_interview"
+}
 # =========================
 # 🧠 REPLAN LOGIC (UNCHANGED)
 # =========================
@@ -138,7 +145,13 @@ Respond ONLY in JSON:
     except Exception:
         return fallback_plan(c, goal, {})
 
+def find_nearest_bus_stop(c, world):
+    stops = world.get("bus_stops", [])
+    if not stops:
+        return None
 
+    stops.sort(key=lambda s: abs(s["x"] - c["x"]) + abs(s["y"] - c["y"]))
+    return stops[0]
 # =========================
 # 🎯 MAIN ENTRY (UPDATED)
 # =========================
@@ -147,6 +160,26 @@ async def generate_plan(c, goal, world):
     if not should_replan(c, goal):
         return c.get("plan")
 
+    # =========================
+    # 🚍 TRANSPORT-AWARE GOALS
+    # =========================
+    if goal in OFFGRID_GOALS:
+
+        action_name = OFFGRID_GOALS[goal]
+
+        steps = plan_transport_to_offgrid(c, world, action_name)
+
+        plan = {
+            "goal": goal,
+            "steps": steps
+        }
+
+        c["plan"] = plan
+        return plan
+
+    # =========================
+    # 🧠 NORMAL LOGIC
+    # =========================
     needs = c.get("needs", {})
 
     use_llm = True
@@ -164,3 +197,31 @@ async def generate_plan(c, goal, world):
 
     c["plan"] = plan
     return plan
+
+def plan_transport_to_offgrid(c, world, action_name):
+
+    steps = []
+
+    # decide transport
+    use_bus = True
+
+    wealth = c.get("wealth", 0)
+    if wealth > 500:
+        use_bus = False
+
+    if use_bus:
+        stop = find_nearest_bus_stop(c, world)
+
+        if stop:
+            steps.append({
+                "name": "move",
+                "target_tile": {"x": stop["x"], "y": stop["y"]}
+            })
+
+            steps.append({"name": "wait_bus"})
+            steps.append({"name": "board_bus", "destination": action_name})
+
+            return steps
+
+    # fallback → car
+    return [{"name": action_name}]
