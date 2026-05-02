@@ -149,7 +149,7 @@ def execute(c, decision, world):
     c["last_action"] = name
     c["internal_thought"] = decision.get("thought", c.get("internal_thought", ""))
 
-
+    c["is_moving"] = False
     # =========================
     # 🔥 UPDATED MOVEMENT
     # =========================
@@ -169,7 +169,7 @@ def execute(c, decision, world):
             nx, ny = path[0]
             c["x"] = nx
             c["y"] = ny
-
+        c["is_moving"] = True
     # =========================
     # SPEECH (UNCHANGED)
     # =========================

@@ -1,6 +1,12 @@
 import * as THREE from 'https://cdn.skypack.dev/three';
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
+import { GLTFLoader } from 'https://cdn.skypack.dev/three/examples/jsm/loaders/GLTFLoader.js';
 
+const loader = new GLTFLoader();
+const clock = new THREE.Clock();
+const mixers = {};
+const actions = {};
+const models = {};
 const canvas=document.getElementById('c');
 const buses = {};
 const cars = {};
@@ -24,6 +30,30 @@ function applyFacing(mesh, dir) {
   };
 
   mesh.rotation.y = map[dir] ?? 0;
+}
+function playAnimation(id, name){
+
+  const map = actions[id];
+  if(!map) return;
+
+  const lower = name.toLowerCase();
+
+  let action = map[lower];
+
+  if(!action){
+    // fallback
+    action = map["idle"];
+  }
+
+  if(!action) return;
+
+  Object.values(map).forEach(a=>{
+    if(a !== action){
+      a.fadeOut(0.2);
+    }
+  });
+
+  action.reset().fadeIn(0.2).play();
 }
 
 function updateCars(state){
@@ -71,15 +101,99 @@ const raycaster=new THREE.Raycaster(); const mouse=new THREE.Vector2();
 function worldToScreen(pos){ const v=pos.clone().project(camera); return {x:(v.x*.5+.5)*innerWidth, y:(-v.y*.5+.5)*innerHeight}; }
 function makeDiv(cls){ const d=document.createElement('div'); d.className=cls; document.body.appendChild(d); return d; }
 function createSim(id){
-  const mesh=new THREE.Mesh(new THREE.CapsuleGeometry(.35,.7,4,8), new THREE.MeshStandardMaterial({color:0x42d392}));
-  scene.add(mesh); sims[id]=mesh; labels[id]=makeDiv('label'); bubbles[id]=makeDiv('bubble'); bubbles[id].style.display='none';
+
+  loader.load('/resources/characters/base.glb', (gltf)=>{
+
+    const model = gltf.scene;
+
+    scene.add(model);
+
+    const mixer = new THREE.AnimationMixer(model);
+
+    const clips = gltf.animations;
+
+    const map = {};
+
+    clips.forEach(clip=>{
+      map[clip.name.toLowerCase()] = mixer.clipAction(clip);
+    });
+
+    mixers[id] = mixer;
+    actions[id] = map;
+    models[id] = model;
+
+    sims[id] = model;
+
+    labels[id] = makeDiv('label');
+    bubbles[id] = makeDiv('bubble');
+    bubbles[id].style.display='none';
+
+    playAnimation(id, "idle");
+  });
 }
 function updateSim(id,c){
-  if(!sims[id]) createSim(id);
-  const mesh=sims[id]; mesh.position.set(c.x-10,.5,c.y-7);
+
+  if(!sims[id]) {
+    createSim(id);
+    return; // wait until model loads
+  }
+
+  const mesh = sims[id];
+  if(!mesh) return;
+
+  // =========================
+  // POSITION
+  // =========================
+  mesh.position.set(c.x-10,.5,c.y-7);
+
+  // =========================
+  // FACING
+  // =========================
   if (c.facing) {
     applyFacing(mesh, c.facing);
   }
+
+  // =========================
+  // 🎬 ANIMATION LOGIC (INSERT HERE)
+  // =========================
+  let anim = "idle";
+
+  // movement
+  if (c.is_moving) {
+    anim = "walk";
+  }
+
+  // activity overrides
+  if (c.activity) {
+    const a = c.activity.name;
+
+    if (a === "sleep") anim = "sleep";
+    else if (a === "use_toilet") anim = "sit";
+    else if (a === "wait_bus") anim = "idle";
+    else if (a === "appointment") anim = "talk";
+  }
+
+  // transport override
+  if (c.transport?.mode === "car") {
+    anim = "drive";
+  }
+
+  // play animation
+  playAnimation(id, anim);
+
+  // =========================
+  // UI (leave untouched)
+  // =========================
+  labels[id].textContent = c.name || id;
+  bubbles[id].textContent = c.speech || "";
+
+  const p = mesh.position.clone().project(camera);
+  const x = (p.x * .5 + .5) * innerWidth;
+  const y = (-p.y * .5 + .5) * innerHeight;
+
+  labels[id].style.transform = `translate(${x}px,${y-20}px)`;
+  bubbles[id].style.transform = `translate(${x}px,${y-40}px)`;
+}
   const p=worldToScreen(mesh.position.clone().add(new THREE.Vector3(0,1.4,0)));
   labels[id].style.left=p.x+'px'; labels[id].style.top=p.y+'px'; labels[id].innerText=`${emojiForEmotion(c.emotion)} ${c.name}`;
   const txt=c.last_utterance || (c.is_on_phone?'📱':'');
