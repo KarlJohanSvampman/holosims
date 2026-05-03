@@ -49,7 +49,7 @@ async def process_agent(c, world):
     update_emotion(c)
 
     # goal
-    goal = select_goal(c)
+    goal = select_goal(c, world)
 
     # planning
     if goal and not c.get("plan"):
