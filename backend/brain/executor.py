@@ -11,6 +11,8 @@ from systems.payments import attempt_pay_bills
 from systems.props import find_nearest_prop,get_prop_by_id
 from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor
 from systems.phone import make_call
+from systems.commitment import start_commitment
+from systems.habits import record_habit
 
 EMOTION_BLOCKS = {
     "fearful": {"smash": "leave", "yell": "leave", "speak": "leave"},
@@ -240,7 +242,14 @@ def execute(c, decision, world):
 
     elif name == "go_leisure":
         send_offgrid(c, world, "leisure", 28)
-
+    elif name == "eat":
+        start_commitment(c, "eat", 600)  # 10 minutes
+        record_habit(c, "eat", world)
+    elif name == "drink":
+        start_commitment(c, "drink", 10)  # 10 minutes
+        record_habit(c, "drink", world)
+    elif name == "sleep":
+        record_habit(c, "sleep", world)
     elif name == "call_911":
         report = utterance or "There is an emergency here."
         create_911_call(world, c, action.get("emergency_type") or "police", report)
@@ -278,8 +287,10 @@ def execute(c, decision, world):
 
         send_offgrid(c, world, action.get("destination"), 40)
     elif name == "pay_bills":
+        start_commitment(c, "pay_bills", 1200)  # 10 minutes
         attempt_pay_bills(c, world)
     elif name == "use_toilet":
+        start_commitment(c, "use_toilet", 300)  # 10 minutes
 
         prop_id = action.get("target_prop_id")
 

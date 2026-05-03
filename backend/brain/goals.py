@@ -1,4 +1,5 @@
 from systems.scheduling import get_current_activity
+from systems.commitment import is_committed
 
 import random
 
@@ -45,6 +46,9 @@ def select_goal(c, world):
     if scheduled in ["sleep", "eat", "relax"]:
         return scheduled
 
+
+    if is_committed(c):
+        return c["commitment"]["goal"]
     # =========================
     # 🚨 DELIVERY / DOORBELL
     # =========================
@@ -106,6 +110,7 @@ def select_goal(c, world):
     # =========================
     scores = apply_emotion_bias(c, scores)
 
+    scores = apply_habit_bias(c, scores, world)
     # =========================
     # 🔥 EMOTIONAL TEMPERATURE EFFECT
     # =========================
@@ -139,7 +144,7 @@ def select_goal(c, world):
             return current
 
     return new_goal
-    
+
 def heuristic_plan(goal):
     if not goal: return []
     return {"employment":["review_jobs","apply_job","attend_interview"],"wealth":["work_shift","save_money"],"social":["find_person","start_conversation"],"health":["seek_care","rest"]}.get(goal.get("type"),["wait"])
