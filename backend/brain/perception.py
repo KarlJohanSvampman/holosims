@@ -138,7 +138,7 @@ def line_of_sight(a, b, world):
     for b in world.get("buildings", []):
         for d in b.get("doors", []):
             if not d.get("is_open", True):
-            blockers.add((d["x"], d["y"]))
+                blockers.add((d["x"], d["y"]))
             
     for _ in range(n):
 

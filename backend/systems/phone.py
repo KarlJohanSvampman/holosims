@@ -1,5 +1,5 @@
 import time
-from systems.relationships import apply_interaction
+from brain.relationships import apply_interaction
 from systems.messaging import queue_message
 
 
@@ -27,7 +27,6 @@ def make_call(c, other, world):
         return False
 
     # otherwise simulate conversation
-    from systems.relationships import apply_interaction
 
     apply_interaction(c, other, "statement")
     apply_interaction(other, c, "statement")
