@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
+from fastapi.middleware.cors import CORSMiddleware
 from core.redis_queue import enqueue
 from db import load_world, save_world, init_db, conn
 from sim_loop import tick
@@ -12,7 +12,16 @@ from llm.llm_client import call_llm,call_llm_safe
 from api.view import router as view_router
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="Sim Society Ultimate")
+app = FastAPI(title="Simsland")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # your frontend
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/resources", StaticFiles(directory="/resources"), name="resources")
 clients = []
 app.include_router(view_router)

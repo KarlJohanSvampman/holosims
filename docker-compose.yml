@@ -1,22 +1,45 @@
 version: "3.9"
+
 services:
   backend:
     build: ./backend
-    ports: ["8000:8000"]
-    env_file: [.env]
+    container_name: sim-backend
+    ports:
+      - "8000:8000"
     environment:
-    - PYTHONPATH=/app
-    - RESOURCES_ROOT=/resources
-    depends_on: [db, redis, ollama]
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/sim
+      - REDIS_HOST=redis
+      - OLLAMA_BASE_URL=http://192.168.0.7:11434  # 👈 your remote Ollama
+      - PYTHONPATH=/app
+    depends_on:
+      - db
+      - redis
     volumes:
-    - ./resources:/resources
+      - ./backend:/app
+      - ./resources:/resources   # 👈 important for models/assets
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
   worker:
     build: ./backend
-    command: python workers/worker.py
-    environment:
-    - PYTHONPATH=/app
+    container_name: sim-worker
     depends_on:
+      - backend
       - redis
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/sim
+      - REDIS_HOST=redis
+      - OLLAMA_BASE_URL=http://192.168.0.7:11434  # 👈 your remote 
+      - PYTHONPATH=/app
+    command: python -m workers.worker
+  frontend:
+    build: ./frontend
+    container_name: sim-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
   db:
     image: postgres:16
     environment:
@@ -27,14 +50,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+
   redis:
     image: redis:7
-    ports: ["6379:6379"]
-  ollama:
-    image: ollama/ollama
-    ports: ["11434:11434"]
-    volumes: ["ollama:/root/.ollama"]
-    
+    container_name: sim-redis
+    ports:
+      - "6379:6379"
+
 volumes:
   pgdata:
-  ollama:

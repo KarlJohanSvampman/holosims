@@ -3,7 +3,7 @@ let selectedTool = "tile";
 let selectedType = null;
 
 async function loadWorld() {
-  const res = await fetch("/editor/world?sim_id=default");
+  const res = await fetch("http://localhost:8000/api/editor/world?sim_id=default");
   world = await res.json();
 }
 
@@ -22,7 +22,7 @@ function placeProp(x, y, type) {
 }
 
 async function saveWorld() {
-  await fetch("/editor/world?sim_id=default", {
+  await fetch("/api/editor/world?sim_id=default", {
     method: "POST",
     body: JSON.stringify(world)
   });

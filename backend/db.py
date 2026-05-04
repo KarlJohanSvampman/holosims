@@ -2,13 +2,26 @@ import psycopg2, json, os
 from core.cache import get_world_cache, set_world_cache
 from core.cache import get_char_cache, set_char_cache
 from world.generate_world import generate_initial_world
+import time
+#conn = psycopg2.connect(
+#    dbname=os.getenv("POSTGRES_DB","sim"),
+#    user=os.getenv("POSTGRES_USER","postgres"),
+#    password=os.getenv("POSTGRES_PASSWORD","postgres"),
+#    host=os.getenv("POSTGRES_HOST","db")
+#)
 
-conn = psycopg2.connect(
-    dbname=os.getenv("POSTGRES_DB","sim"),
-    user=os.getenv("POSTGRES_USER","postgres"),
-    password=os.getenv("POSTGRES_PASSWORD","postgres"),
-    host=os.getenv("POSTGRES_HOST","db")
-)
+def connect_with_retry():
+    for i in range(10):
+        try:
+            return psycopg2.connect(
+                os.getenv("DATABASE_URL")
+            )
+        except Exception as e:
+            print(f"DB not ready, retrying... ({i})")
+            time.sleep(2)
+    raise Exception("Could not connect to DB")
+
+conn = connect_with_retry()
 
 def init_db():
     with conn:

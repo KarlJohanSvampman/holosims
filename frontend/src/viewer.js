@@ -62,8 +62,10 @@ function addModel(url, x, y, scale=1) {
 }
 
 async function fetchAndRender() {
-  const res = await fetch(`/view?sim_id=default&cx=${center.x}&cy=${center.y}&zoom=${zoom}`);
+  const res = awaitfetch(`/api/view?sim_id=default&cx=${center.x}&cy=${center.y}&zoom=${zoom}`);
   const data = await res.json();
+
+    console.log("DATA:", data); // 👈 add this
 
   clearScene();
 

@@ -1,7 +1,6 @@
-import * as THREE from 'https://cdn.skypack.dev/three';
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
-import { GLTFLoader } from 'https://cdn.skypack.dev/three/examples/jsm/loaders/GLTFLoader.js';
-
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const mixers = {};
@@ -14,7 +13,8 @@ const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x20242a);
 const camera=new THREE.OrthographicCamera(-12,12,8,-8,0.1,1000);
 camera.position.set(10,10,10); camera.lookAt(0,0,0);
-const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("c") });
+//const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 window.addEventListener('resize',()=>renderer.setSize(innerWidth,innerHeight));
 scene.add(new THREE.AmbientLight(0xffffff,.4));
@@ -202,7 +202,7 @@ function updateSim(id,c){
   labels[id].style.left=p.x+'px'; labels[id].style.top=p.y+'px'; labels[id].innerText=`${emojiForEmotion(c.emotion)} ${c.name}`;
   const txt=c.last_utterance || (c.is_on_phone?'📱':'');
   if(txt){ const bp=worldToScreen(mesh.position.clone().add(new THREE.Vector3(0,2.1,0))); bubbles[id].style.display='block'; bubbles[id].style.left=bp.x+'px'; bubbles[id].style.top=bp.y+'px'; bubbles[id].innerText=txt; } else bubbles[id].style.display='none';
-}
+
 function updateMailboxes(state){
   for(const m of state.mailboxes||[]){
     if(!mailboxes[m.id]){ const mesh=new THREE.Mesh(new THREE.BoxGeometry(.45,.45,.45), new THREE.MeshStandardMaterial({color:0xffd166})); mesh.userData={type:'mailbox', household_id:m.household_id}; scene.add(mesh); mailboxes[m.id]=mesh; }
@@ -233,8 +233,8 @@ canvas.addEventListener('click', (ev)=>{
   const hits=raycaster.intersectObjects(Object.values(mailboxes));
   if(hits[0]) showHousehold(hits[0].object.userData.household_id);
 });
-const ws=new WebSocket(`ws://${location.host}/ws`);
-ws.onopen=()=>{ document.getElementById('overlay').innerHTML='Connected'; ws.send('hello'); };
+const WS_URL = `ws://${location.hostname}:8000/ws`;
+const ws = new WebSocket(WS_URL);ws.onopen=()=>{ document.getElementById('overlay').innerHTML='Connected'; ws.send('hello'); };
 ws.onmessage = (e)=>{
   const state = JSON.parse(e.data);
 
