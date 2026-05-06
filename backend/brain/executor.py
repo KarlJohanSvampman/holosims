@@ -6,7 +6,7 @@ from brain.relationships import apply_interaction
 from brain.emotion import apply_emotion_inertia
 from systems.offgrid import send_offgrid
 from systems.emergency import create_911_call
-from systems.activities import update_activity
+from systems.activities import update_activity,update_interaction_phases
 from systems.payments import attempt_pay_bills
 from systems.props import find_nearest_prop,get_prop_by_id
 from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor
@@ -161,7 +161,8 @@ def _target(c, world, action):
 # =========================
 def execute(c, decision, world):
 
-
+    update_interaction_phases(c, world)
+    
     if update_activity(c, world):
         return  
 
@@ -240,7 +241,11 @@ def execute(c, decision, world):
         c["activity"] = {
             "name": anchor["interaction"],
             "prop_id": prop_id,
-            "anchor": anchor_name
+            "anchor": anchor_name,
+
+            "phase": "start",           # 🔥 NEW
+            "phase_started": world["tick"],
+            "duration": 20              # 🔥 TEMP (ticks)
         }
     # =========================
     # SPEECH (UNCHANGED)

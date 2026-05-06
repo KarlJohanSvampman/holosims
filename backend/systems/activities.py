@@ -72,3 +72,36 @@ def complete_activity(c, world):
         c["needs"]["energy"] = 1.0
 
     release_anchor(c, world)
+
+def update_interaction_phases(c, world):
+    act = c.get("activity")
+    if not act:
+        return
+
+    phase = act.get("phase")
+    start_tick = act.get("phase_started", 0)
+
+    elapsed = world["tick"] - start_tick
+
+    # -----------------
+    # START → LOOP
+    # -----------------
+    if phase == "start" and elapsed > 2:
+        act["phase"] = "loop"
+        act["phase_started"] = world["tick"]
+
+    # -----------------
+    # LOOP → STOP
+    # -----------------
+    elif phase == "loop" and elapsed > act.get("duration", 20):
+        act["phase"] = "stop"
+        act["phase_started"] = world["tick"]
+
+    # -----------------
+    # STOP → DONE
+    # -----------------
+    elif phase == "stop" and elapsed > 2:
+        from systems.occupancy import release_anchor
+        release_anchor(c, world)
+
+        c["activity"] = None

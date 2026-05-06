@@ -1,7 +1,5 @@
-function findAnchor(prop, interaction) {
-  return prop.anchors.find(
-    a => a.interaction.type === interaction && !a.occupiedBy
-  );
+function findAnchorByName(prop, name) {
+  return prop.anchors.find(a => a.name === name);
 }
 
 function getAnchorWorldPosition(anchor) {

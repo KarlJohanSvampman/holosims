@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
-import { getAnchorWorldPosition, findAnchor } from './interactions.js';
+import { getAnchorWorldPosition, findAnchor, playPropAnimation } from './interactions.js';
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const mixers = {};
@@ -29,10 +29,8 @@ function update(delta) {
   }
 }
 
-function findAnchor(prop, interaction) {
-  return prop.anchors.find(
-    a => a.interaction.type === interaction && !a.occupiedBy
-  );
+function findAnchorByName(prop, name) {
+  return prop.anchors.find(a => a.name === name);
 }
 
 function getAnchorWorldPosition(anchor) {
@@ -172,32 +170,76 @@ function updateSim(id,c){
   if (c.facing) {
     applyFacing(mesh, c.facing);
   }
+// =========================
+// 🎬 FULL INTERACTION SYSTEM
+// =========================
 
-  // =========================
-  // 🎬 ANIMATION LOGIC (INSERT HERE)
-  // =========================
-  let anim = "idle";
+let anim = "idle";
 
-  // movement
-  if (c.is_moving) {
-    anim = "walk";
-  }
+// -----------------
+// MOVEMENT
+// -----------------
+if (c.is_moving) {
+  anim = "walk";
+}
 
+// -----------------
+// INTERACTION (NEW SYSTEM)
+// -----------------
 if (c.activity?.prop_id) {
+
   const prop = propRegistry[c.activity.prop_id];
+  if (!prop) return;
 
-  if (prop) {
-    const anchor = findAnchor(prop, c.activity.name);
+  // 🔥 IMPORTANT: use anchor NAME (not interaction type)
+  const anchor = prop.anchors.find(
+    a => a.name === c.activity.anchor
+  );
 
-    if (anchor) {
-      const pos = getAnchorWorldPosition(anchor);
+  if (!anchor) return;
 
-      mesh.position.copy(pos);
+  // -----------------
+  // POSITION (snap to anchor)
+  // -----------------
+  const pos = getAnchorWorldPosition(anchor);
+  mesh.position.copy(pos);
 
-      playPropAnimation(prop, anchor, "loop");
-      return;
-    }
+  // -----------------
+  // FACING (towards anchor direction handled backend)
+  // -----------------
+  if (c.facing) {
+    applyFacing(mesh, c.facing);
   }
+
+  // -----------------
+  // 🎬 PLAY CHARACTER ANIMATION
+  // -----------------
+  const phase = c.activity.phase || "loop";
+
+  const animMap = anchor.interaction.animations;
+
+  let clipName = null;
+
+  if (phase === "start") {
+    clipName = animMap.start;
+  } else if (phase === "loop") {
+    clipName = animMap.loop;
+  } else if (phase === "stop") {
+    clipName = animMap.stop;
+  } else if (phase === "interrupt") {
+    clipName = animMap.interrupted;
+  }
+
+  if (clipName) {
+    playAnimation(id, clipName);
+  }
+
+  // -----------------
+  // 🎬 PLAY PROP ANIMATION (doors, beds, etc)
+  // -----------------
+  playPropAnimation(prop, anchor, phase);
+
+  return;
 }
 
   // transport override
