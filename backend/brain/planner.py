@@ -1,6 +1,7 @@
 import json
 from llm.llm_client import call_llm, call_llm_safe
 from systems.props import find_nearest_anchor
+from systems.navgrid import build_blocked_set, is_walkable
 
 OFFGRID_GOALS = {
     "work": "go_work",
@@ -9,6 +10,24 @@ OFFGRID_GOALS = {
     "interview": "go_interview"
 }
 
+def get_best_approach_tile(c, anchor, world):
+    blocked = build_blocked_set(world)
+
+    best = None
+    best_dist = 999999
+
+    for nx, ny in neighbors(anchor["x"], anchor["y"]):
+
+        if not is_walkable(nx, ny, world, blocked):
+            continue
+
+        dist = abs(nx - c["x"]) + abs(ny - c["y"])
+
+        if dist < best_dist:
+            best = (nx, ny)
+            best_dist = dist
+
+    return best
 # =========================
 # 🧠 REPLAN LOGIC
 # =========================
@@ -46,39 +65,6 @@ def find_door_to_room(building, room):
             return d
     return None
 
-
-# =========================
-# 🧠 PROP HELPERS (NEW)
-# =========================
-def find_nearest_prop(c, world, prop_type):
-
-    best = None
-    best_dist = 999999
-
-    for p in world.get("props", []):
-        if p.get("type") != prop_type:
-            continue
-
-        # 🔥 NEW: skip fully occupied props
-        anchors = p.get("interaction", {}).get("anchors", [])
-
-        if anchors:
-            if all(a.get("occupied_by") for a in anchors):
-                continue
-
-        if not anchor:
-            c["plan"] = None
-            return
-
-        dist = abs(p["x"] - c["x"]) + abs(p["y"] - c["y"])
-
-        if dist < best_dist:
-            best = p
-            best_dist = dist
-
-    return best
-
-
 # =========================
 # 🎯 TARGET RESOLUTION (UPDATED)
 # =========================
@@ -106,14 +92,19 @@ def fallback_plan(c, goal, world):
 
     steps = []
 
+    approach = get_best_approach_tile(c, anchor, world)
+
+    if not approach:
+        return {"goal": goal, "steps": [{"name": "wait"}]}
+
     steps.append({
         "name": "move",
-        "target_anchor": {
-            "prop_id": prop["id"],
-            "anchor": anchor["name"],
-            "x": anchor["x"],
-            "y": anchor["y"]
-        }
+        "target_tile": {
+            "x": approach[0],
+            "y": approach[1]
+        },
+        "prop_id": prop["id"],
+        "anchor": anchor["name"]
     })
 
     steps.append({

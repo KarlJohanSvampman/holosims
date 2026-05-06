@@ -120,41 +120,6 @@ def build_blocked(world):
 
     return blocked
 
-
-def find_path(c, tx, ty, world):
-    start = (c["x"], c["y"])
-    goal = (tx, ty)
-
-    blocked = build_blocked_set(world)
-    queue = deque([(start, [])])
-    visited = {start}
-
-    while queue:
-        (x, y), path = queue.popleft()
-
-        if (x, y) == goal:
-            return path
-
-        for nx, ny in neighbors(x, y):
-
-            if (nx, ny) in visited:
-                continue
-
-            if not is_walkable(nx, ny, world, blocked):
-                continue
-
-            # stay within grid
-            if nx < 0 or ny < 0:
-                continue
-            if nx >= world["grid"]["width"] or ny >= world["grid"]["height"]:
-                continue
-
-            visited.add((nx, ny))
-            queue.append(((nx, ny), path + [(nx, ny)]))
-
-    return []
-
-
 def try_open_door(c, world):
     for b in world.get("buildings", []):
         for d in b.get("doors", []):
@@ -215,15 +180,9 @@ def execute(c, decision, world):
     # =========================
     if name == "move":
 
-        anchor = action.get("target_anchor")
-
-        if anchor:
-            tx = anchor["x"]
-            ty = anchor["y"]
-        else:
-            tgt = action.get("target_tile", {})
-            tx = int(tgt.get("x", c["x"]))
-            ty = int(tgt.get("y", c["y"]))
+        tgt = action.get("target_tile", {})
+        tx = int(tgt.get("x", c["x"]))
+        ty = int(tgt.get("y", c["y"]))
 
         path = find_path(c, tx, ty, world)
 
@@ -242,7 +201,6 @@ def execute(c, decision, world):
         if not prop:
             return
 
-        # find anchor
         anchor = next(
             (a for a in prop.get("anchors", []) if a["name"] == anchor_name),
             None
@@ -251,17 +209,15 @@ def execute(c, decision, world):
         if not anchor:
             return
 
+        # 🔥 MUST be adjacent (not on anchor tile)
+        if abs(c["x"] - anchor["x"]) + abs(c["y"] - anchor["y"]) > 1:
+            return  # not in position yet
+
         if anchor.get("occupied_by"):
-            return  # busy → fail gracefully
+            return
 
-        # reserve
-        anchor["occupied_by"] = c["id"]
+        reserve_anchor(c, prop, anchor)
 
-        # snap to position
-        c["x"] = anchor["x"]
-        c["y"] = anchor["y"]
-
-        # mark activity (frontend will animate)
         c["activity"] = {
             "name": anchor["interaction"],
             "prop_id": prop_id,
