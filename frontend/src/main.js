@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
+import { getAnchorWorldPosition, findAnchor } from './anchor_helpers.js';
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const mixers = {};
@@ -21,6 +22,25 @@ scene.add(new THREE.AmbientLight(0xffffff,.4));
 const light=new THREE.DirectionalLight(0xffffff,1); light.position.set(5,10,5); scene.add(light);
 scene.add(new THREE.GridHelper(24,24));
 
+
+function update(delta) {
+  for (const p of Object.values(propRegistry)) {
+    if (p.mixer) p.mixer.update(delta);
+  }
+}
+
+function findAnchor(prop, interaction) {
+  return prop.anchors.find(
+    a => a.interaction.type === interaction && !a.occupiedBy
+  );
+}
+
+function getAnchorWorldPosition(anchor) {
+  const pos = new THREE.Vector3();
+  anchor.object.getWorldPosition(pos);
+  return pos;
+}
+ 
 function applyFacing(mesh, dir) {
   const map = {
     north: Math.PI,
@@ -163,15 +183,22 @@ function updateSim(id,c){
     anim = "walk";
   }
 
-  // activity overrides
-  if (c.activity) {
-    const a = c.activity.name;
+if (c.activity?.prop_id) {
+  const prop = propRegistry[c.activity.prop_id];
 
-    if (a === "sleep") anim = "sleep";
-    else if (a === "use_toilet") anim = "sit";
-    else if (a === "wait_bus") anim = "idle";
-    else if (a === "appointment") anim = "talk";
+  if (prop) {
+    const anchor = findAnchor(prop, c.activity.name);
+
+    if (anchor) {
+      const pos = getAnchorWorldPosition(anchor);
+
+      mesh.position.copy(pos);
+
+      playPropAnimation(prop, anchor, "loop");
+      return;
+    }
   }
+}
 
   // transport override
   if (c.transport?.mode === "car") {
@@ -237,7 +264,9 @@ const WS_URL = `ws://${location.hostname}:8000/ws`;
 const ws = new WebSocket(WS_URL);ws.onopen=()=>{ document.getElementById('overlay').innerHTML='Connected'; ws.send('hello'); };
 ws.onmessage = (e)=>{
   const state = JSON.parse(e.data);
-
+´
+  const delta = clock.getDelta();
+  update(delta);
   updateOverlay(state);
   updateDayNight(state.calendar);
   updateCars(state)

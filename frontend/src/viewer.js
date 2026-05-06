@@ -52,11 +52,69 @@ function addTile(t) {
   scene.add(mesh);
 }
 
-function addModel(url, x, y, scale=1) {
+const propRegistry = {};
+
+function loadProp(p) {
+  const url = `/resources/props/${p.type}.glb`;
+
   loader.load(url, (gltf) => {
     const obj = gltf.scene;
-    obj.position.set(x, y, 0);
-    obj.scale.set(scale, scale, scale);
+
+    obj.position.set(p.x, p.y, 0);
+    obj.rotation.z = (p.rotation || 0) * Math.PI / 180;
+
+    // 🎬 animations
+    const mixer = new THREE.AnimationMixer(obj);
+    const actions = {};
+
+    gltf.animations.forEach(clip => {
+      actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+    });
+
+    // 🧠 anchors (NEW SYSTEM)
+    const anchors = [];
+
+    obj.traverse(child => {
+      if (!child.name.startsWith("anchor_")) return;
+
+      const interaction = child.userData.interaction;
+
+      if (!interaction) return;
+
+      anchors.push({
+        name: child.name.replace("anchor_", ""),
+
+        object: child,
+
+        interaction: {
+          type: interaction,
+
+          animations: {
+            start: child.userData.start_interaction || null,
+            loop: interaction,
+            stop: child.userData.stop_interaction || null,
+            interrupted: child.userData.interrupted || null
+          }
+        },
+
+        occupiedBy: null
+      });
+    });
+
+    propRegistry[p.id] = {
+      id: p.id,
+      type: p.type,
+
+      object: obj,
+      mixer,
+      actions,
+      anchors,
+
+      state: {
+        is_closed: p.is_closed ?? false
+      }
+    };
+
     scene.add(obj);
   });
 }
@@ -74,23 +132,32 @@ async function fetchAndRender() {
     data.tiles.forEach(addTile);
   }
 
-  // props + doors (LOD: always, but fewer details when zoom=1)
   data.props.forEach(p => {
-    // you can map type→model on client or request-resolved URLs from server
-    const model = `/resources/props/${p.type}.glb`;
-    addModel(model, p.x, p.y, zoom === 1 ? 0.5 : 1);
+    if (!propRegistry[p.id]) {
+      loadProp(p);
+    }
   });
 
   data.doors.forEach(d => {
-    const model = d.is_open
-      ? `/resources/props/door_open.glb`
-      : `/resources/props/door.glb`;
-    addModel(model, d.x, d.y, zoom === 1 ? 0.5 : 1);
+    if (!propRegistry[d.id]) {
+      loadProp(d);
+    }
+
+    const prop = propRegistry[d.id];
+    if (!prop) return;
+
+    const anchor = prop.anchors[0]; // or pick push/pull
+
+    if (d.is_open) {
+      playPropAnimation(prop, anchor, "start");
+    } else {
+      playPropAnimation(prop, anchor, "stop");
+    }
   });
 
   // characters
   data.characters.forEach(c => {
-    addModel(`/resources/characters/base.glb`, c.x, c.y, zoom === 1 ? 0.5 : 1);
+    addModel(`/resources/characters/Adult_Male.fbx`, c.x, c.y, zoom === 1 ? 0.5 : 1);
   });
 }
 

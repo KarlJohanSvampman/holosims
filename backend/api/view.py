@@ -23,6 +23,11 @@ def get_view(sim_id: str, cx: int, cy: int, zoom: int = 2):
     ]
 
     props = [
+            
+        {
+        **p,
+        "rotation": p.get("rotation", 0)
+        }
         p for p in world.get("props", [])
         if in_view(p["x"], p["y"], cx, cy, radius)
     ]
