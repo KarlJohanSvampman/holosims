@@ -5,18 +5,23 @@ def get_prop_by_id(world, prop_id):
     return None
 
 
-def find_nearest_prop(c, world, prop_type):
+def find_nearest_anchor(c, world, interaction):
     best = None
     best_dist = 999999
 
     for p in world.get("props", []):
-        if p.get("type") != prop_type:
-            continue
+        for a in p.get("anchors", []):
 
-        dist = abs(p["x"] - c["x"]) + abs(p["y"] - c["y"])
+            if a.get("interaction") != interaction:
+                continue
 
-        if dist < best_dist:
-            best = p
-            best_dist = dist
+            if a.get("occupied_by"):
+                continue
 
-    return best
+            dist = abs(a["x"] - c["x"]) + abs(a["y"] - c["y"])
+
+            if dist < best_dist:
+                best = (p, a)
+                best_dist = dist
+
+    return best  # (prop, anchor)

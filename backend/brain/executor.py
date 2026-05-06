@@ -13,6 +13,8 @@ from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor
 from systems.phone import make_call
 from systems.commitment import start_commitment
 from systems.habits import record_habit
+from systems.navgrid import build_blocked_set, is_walkable
+
 
 EMOTION_BLOCKS = {
     "fearful": {"smash": "leave", "yell": "leave", "speak": "leave"},
@@ -23,6 +25,61 @@ EMOTION_BLOCKS = {
     "curious": {"smash": "observe"}
 }
 
+
+def is_occupied(x, y, world, ignore_id=None):
+    for c2 in world.get("characters", {}).values():
+        if c2["id"] == ignore_id:
+            continue
+        if (c2["x"], c2["y"]) == (x, y):
+            return True
+    return False
+
+
+def find_path(c, tx, ty, world):
+    start = (c["x"], c["y"])
+    goal = (tx, ty)
+
+    blocked = build_blocked_set(world)
+
+    queue = deque([(start, [])])
+    visited = {start}
+
+    while queue:
+        (x, y), path = queue.popleft()
+
+        # 🎯 reached goal
+        if (x, y) == goal:
+            return path
+
+        for nx, ny in neighbors(x, y):
+
+            if (nx, ny) in visited:
+                continue
+
+            # -----------------
+            # GRID BOUNDS
+            # -----------------
+            if nx < 0 or ny < 0:
+                continue
+            if nx >= world["grid"]["width"] or ny >= world["grid"]["height"]:
+                continue
+
+            # -----------------
+            # WALKABILITY
+            # -----------------
+            # 🔥 allow stepping onto goal even if blocked
+            if (nx, ny) != goal:
+                if not is_walkable(nx, ny, world, blocked):
+                    continue
+
+                # optional: avoid other sims
+                if is_occupied(nx, ny, world, ignore_id=c["id"]):
+                    continue
+
+            visited.add((nx, ny))
+            queue.append(((nx, ny), path + [(nx, ny)]))
+
+    return []
 
 def find_bus_at_stop(c, world):
 
@@ -68,8 +125,7 @@ def find_path(c, tx, ty, world):
     start = (c["x"], c["y"])
     goal = (tx, ty)
 
-    blocked = build_blocked(world)
-
+    blocked = build_blocked_set(world)
     queue = deque([(start, [])])
     visited = {start}
 
@@ -84,7 +140,7 @@ def find_path(c, tx, ty, world):
             if (nx, ny) in visited:
                 continue
 
-            if (nx, ny) in blocked:
+            if not is_walkable(nx, ny, world, blocked):
                 continue
 
             # stay within grid
@@ -159,13 +215,15 @@ def execute(c, decision, world):
     # =========================
     if name == "move":
 
-        # try open door first
-        if try_open_door(c, world):
-            return
+        anchor = action.get("target_anchor")
 
-        tgt = action.get("target_tile") or {}
-        tx = int(tgt.get("x", c["x"]))
-        ty = int(tgt.get("y", c["y"]))
+        if anchor:
+            tx = anchor["x"]
+            ty = anchor["y"]
+        else:
+            tgt = action.get("target_tile", {})
+            tx = int(tgt.get("x", c["x"]))
+            ty = int(tgt.get("y", c["y"]))
 
         path = find_path(c, tx, ty, world)
 
@@ -173,7 +231,42 @@ def execute(c, decision, world):
             nx, ny = path[0]
             c["x"] = nx
             c["y"] = ny
+
         c["is_moving"] = True
+    elif name == "interact":
+
+        prop_id = action.get("prop_id")
+        anchor_name = action.get("anchor")
+
+        prop = get_prop_by_id(world, prop_id)
+        if not prop:
+            return
+
+        # find anchor
+        anchor = next(
+            (a for a in prop.get("anchors", []) if a["name"] == anchor_name),
+            None
+        )
+
+        if not anchor:
+            return
+
+        if anchor.get("occupied_by"):
+            return  # busy → fail gracefully
+
+        # reserve
+        anchor["occupied_by"] = c["id"]
+
+        # snap to position
+        c["x"] = anchor["x"]
+        c["y"] = anchor["y"]
+
+        # mark activity (frontend will animate)
+        c["activity"] = {
+            "name": anchor["interaction"],
+            "prop_id": prop_id,
+            "anchor": anchor_name
+        }
     # =========================
     # SPEECH (UNCHANGED)
     # =========================

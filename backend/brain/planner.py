@@ -1,6 +1,6 @@
 import json
 from llm.llm_client import call_llm, call_llm_safe
-
+from systems.props import find_nearest_anchor
 
 OFFGRID_GOALS = {
     "work": "go_work",
@@ -84,73 +84,44 @@ def find_nearest_prop(c, world, prop_type):
 # =========================
 def resolve_goal_target(c, world, goal):
 
+    if goal == "sleep":
+        return find_nearest_anchor(c, world, "sleep")
+
     if goal == "toilet":
-        return find_nearest_prop(c, world, "toilet")
+        return find_nearest_anchor(c, world, "sit")
 
     if goal == "eat":
-        return find_nearest_prop(c, world, "fridge")
-
-    if goal == "sleep":
-        return find_nearest_prop(c, world, "bed")
+        return find_nearest_anchor(c, world, "eat")
 
     return None
 
-
-# =========================
-# ⚡ FALLBACK PLAN (UPGRADED WITH PROPS)
-# =========================
 def fallback_plan(c, goal, world):
 
     target = resolve_goal_target(c, world, goal)
 
     if not target:
-        return {
-            "goal": goal,
-            "steps": [{"name": "wait"}]
-        }
+        return {"goal": goal, "steps": [{"name": "wait"}]}
 
-    my_room, my_building = find_room(world, c["x"], c["y"])
-    tgt_room, tgt_building = find_room(world, target["x"], target["y"])
+    prop, anchor = target
 
     steps = []
 
-    # move via door if needed
-    if tgt_room and tgt_room != my_room:
-        door = find_door_to_room(tgt_building, tgt_room)
-        if door:
-            steps.append({
-                "name": "move",
-                "target_tile": {"x": door["x"], "y": door["y"]}
-            })
+    steps.append({
+        "name": "move",
+        "target_anchor": {
+            "prop_id": prop["id"],
+            "anchor": anchor["name"],
+            "x": anchor["x"],
+            "y": anchor["y"]
+        }
+    })
 
-    # move to interaction spot (anchor or tile)
-    spot = target.get("interaction", {}).get("spot")
-
-    if spot:
-        steps.append({
-            "name": "move",
-            "target_tile": {"x": spot["x"], "y": spot["y"]}
-        })
-    else:
-        steps.append({
-            "name": "move",
-            "target_tile": {"x": target["x"], "y": target["y"]}
-        })
-
-    # interaction step (CRITICAL: pass prop id)
-    action_map = {
-        "toilet": "use_toilet",
-        "eat": "eat",
-        "sleep": "sleep"
-    }
-
-    action_name = action_map.get(goal)
-
-    if action_name:
-        steps.append({
-            "name": action_name,
-            "target_prop_id": target["id"]
-        })
+    steps.append({
+        "name": "interact",
+        "interaction": anchor["interaction"],
+        "prop_id": prop["id"],
+        "anchor": anchor["name"]
+    })
 
     return {
         "goal": goal,

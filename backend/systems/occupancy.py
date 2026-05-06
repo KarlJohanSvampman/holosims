@@ -1,9 +1,7 @@
-def find_free_anchor(prop, action_name):
+def find_free_anchor(prop, interaction):
 
-    anchors = prop.get("interaction", {}).get("anchors", [])
-
-    for a in anchors:
-        if a["name"] == action_name and not a.get("occupied_by"):
+    for a in prop.get("anchors", []):
+        if a.get("interaction") == interaction and not a.get("occupied_by"):
             return a
 
     return None
@@ -32,7 +30,7 @@ def release_anchor(c, world):
         if p["id"] != prop_id:
             continue
 
-        for a in p.get("interaction", {}).get("anchors", []):
+        for a in p.get("anchors", []):
             if a["name"] == anchor_name and a.get("occupied_by") == c["id"]:
                 a["occupied_by"] = None
 

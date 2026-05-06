@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
-import { getAnchorWorldPosition, findAnchor } from './anchor_helpers.js';
+import { getAnchorWorldPosition, findAnchor } from './interactions.js';
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const mixers = {};
