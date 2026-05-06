@@ -104,14 +104,22 @@ def fallback_plan(c, goal, world):
             "y": approach[1]
         },
         "prop_id": prop["id"],
-        "anchor": anchor["name"]
+        "anchor": anchor["name"],
+        "anchor_pos": {   
+            "x": anchor["x"],
+            "y": anchor["y"]
+        }
     })
 
     steps.append({
         "name": "interact",
         "interaction": anchor["interaction"],
         "prop_id": prop["id"],
-        "anchor": anchor["name"]
+        "anchor": anchor["name"],
+        "anchor_pos": {   # 🔥 ADD THIS
+            "x": anchor["x"],
+            "y": anchor["y"]
+        }
     })
 
     return {

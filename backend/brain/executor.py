@@ -26,6 +26,16 @@ EMOTION_BLOCKS = {
 }
 
 
+def compute_facing(cx, cy, tx, ty):
+    dx = tx - cx
+    dy = ty - cy
+
+    if abs(dx) > abs(dy):
+        return "east" if dx > 0 else "west"
+    else:
+        return "south" if dy > 0 else "north"
+
+
 def is_occupied(x, y, world, ignore_id=None):
     for c2 in world.get("characters", {}).values():
         if c2["id"] == ignore_id:
@@ -188,6 +198,8 @@ def execute(c, decision, world):
 
         if path:
             nx, ny = path[0]
+
+            c["facing"] = compute_facing(c["x"], c["y"], nx, ny)
             c["x"] = nx
             c["y"] = ny
 
@@ -196,6 +208,7 @@ def execute(c, decision, world):
 
         prop_id = action.get("prop_id")
         anchor_name = action.get("anchor")
+        anchor_pos = action.get("anchor_pos")  # 🔥 NEW
 
         prop = get_prop_by_id(world, prop_id)
         if not prop:
@@ -215,6 +228,12 @@ def execute(c, decision, world):
 
         if anchor.get("occupied_by"):
             return
+        # 🔥 FACE THE ANCHOR
+        if anchor_pos:
+            c["facing"] = compute_facing(
+                c["x"], c["y"],
+                anchor_pos["x"], anchor_pos["y"]
+            )
 
         reserve_anchor(c, prop, anchor)
 
