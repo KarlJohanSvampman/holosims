@@ -10,13 +10,18 @@ def find_free_anchor(prop, interaction):
 def reserve_anchor(c, prop, anchor):
 
     anchor["occupied_by"] = c["id"]
-
+    anchor.setdefault("queue", [])
     c["occupying"] = {
         "prop_id": prop["id"],
         "anchor_name": anchor["name"]
     }
 
 
+def enqueue_anchor(c, prop, anchor):
+    anchor.setdefault("queue", [])
+    if c["id"] not in anchor["queue"]:
+        anchor["queue"].append(c["id"])
+        
 def release_anchor(c, world):
 
     occ = c.get("occupying")
@@ -31,7 +36,17 @@ def release_anchor(c, world):
             continue
 
         for a in p.get("anchors", []):
-            if a["name"] == anchor_name and a.get("occupied_by") == c["id"]:
+            if a["name"] != anchor_name:
+                continue
+
+            if a.get("occupied_by") == c["id"]:
                 a["occupied_by"] = None
 
-    c["occupying"] = None
+                # 🔥 wake next in queue
+                queue = a.get("queue", [])
+                if queue:
+                    next_id = queue.pop(0)
+
+                    for c2 in world["characters"].values():
+                        if c2["id"] == next_id:
+                            c2["activity"] = None  # force replan

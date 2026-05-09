@@ -95,8 +95,13 @@ def fallback_plan(c, goal, world):
     approach = get_best_approach_tile(c, anchor, world)
 
     if not approach:
-        return {"goal": goal, "steps": [{"name": "wait"}]}
-
+        return {
+            "goal": goal,
+            "steps": [
+                {"name": "wait", "duration": 2}
+            ]
+        }
+        
     steps.append({
         "name": "move",
         "target_tile": {

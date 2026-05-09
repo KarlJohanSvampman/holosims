@@ -56,6 +56,28 @@ def build_blocked_set(world):
             if d.get("state", "closed") != "open":
                 blocked.add((d["x"], d["y"]))
 
+# -----------------
+# 🔥 ACTIVE INTERACTIONS (NEW)
+# -----------------
+for c in world.get("characters", {}).values():
+
+    act = c.get("activity")
+    if not act:
+        continue
+
+    prop_id = act.get("prop_id")
+    phase = act.get("phase")
+
+    # during start/stop → block movement
+    if phase in ["start", "stop"]:
+
+        prop = next((p for p in world.get("props", []) if p["id"] == prop_id), None)
+        if not prop:
+            continue
+
+        # block ALL tiles of prop footprint
+        for (px, py) in get_prop_tiles(prop):
+            blocked.add((px, py))
     return blocked
 
 

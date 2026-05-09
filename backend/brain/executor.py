@@ -25,6 +25,10 @@ EMOTION_BLOCKS = {
     "curious": {"smash": "observe"}
 }
 
+def enqueue_anchor(c, prop, anchor):
+    anchor.setdefault("queue", []   )
+    if c["id"] not in anchor["queue"]:
+        anchor["queue"].append(c["id"])
 
 def compute_facing(cx, cy, tx, ty):
     dx = tx - cx
@@ -163,6 +167,11 @@ def execute(c, decision, world):
 
     update_interaction_phases(c, world)
     
+    # 🔥 BLOCK MOVEMENT DURING ANIMATION
+    act = c.get("activity")
+    if act and act.get("phase") in ["start", "stop"]:
+        return
+
     if update_activity(c, world):
         return  
 
@@ -205,6 +214,14 @@ def execute(c, decision, world):
             c["y"] = ny
 
         c["is_moving"] = True
+   elif name == "wait":
+
+    c["activity"] = {
+        "name": "wait",
+        "phase": "loop",
+        "phase_started": world["tick"],
+        "duration": action.get("duration", 2)
+    }     
     elif name == "interact":
 
         prop_id = action.get("prop_id")
@@ -228,15 +245,26 @@ def execute(c, decision, world):
             return  # not in position yet
 
         if anchor.get("occupied_by"):
-            return
-        # 🔥 FACE THE ANCHOR
-        if anchor_pos:
-            c["facing"] = compute_facing(
-                c["x"], c["y"],
-                anchor_pos["x"], anchor_pos["y"]
-            )
 
-        reserve_anchor(c, prop, anchor)
+            enqueue_anchor(c, prop, anchor)
+
+            c["activity"] = {
+                "name": "waiting_for_anchor",
+                "prop_id": prop_id,
+                "anchor": anchor_name,
+                "phase": "loop",
+                "phase_started": world["tick"]
+            }
+
+            return            
+            # 🔥 FACE THE ANCHOR
+            if anchor_pos:
+                c["facing"] = compute_facing(
+                    c["x"], c["y"],
+                    anchor_pos["x"], anchor_pos["y"]
+                )
+
+            reserve_anchor(c, prop, anchor)
 
         c["activity"] = {
             "name": anchor["interaction"],
