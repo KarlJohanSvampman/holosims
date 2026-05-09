@@ -101,7 +101,8 @@ def update_interaction_phases(c, world):
     # STOP → DONE
     # -----------------
     elif phase == "stop" and elapsed > 2:
-        from systems.occupancy import release_anchor
+        from systems.occupancy import release_anchor, release_reservation
         release_anchor(c, world)
+        release_reservation(c, world)
 
         c["activity"] = None

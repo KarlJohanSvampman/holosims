@@ -17,8 +17,11 @@ def find_nearest_anchor(c, world, interaction):
 
             if a.get("occupied_by"):
                 continue
-
-            dist = abs(a["x"] - c["x"]) + abs(a["y"] - c["y"])
+            
+            if a.get("reserved_by") and a["reserved_by"] != c["id"]:
+                continue
+            d
+            ist = abs(a["x"] - c["x"]) + abs(a["y"] - c["y"])
 
             if dist < best_dist:
                 best = (p, a)

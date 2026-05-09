@@ -117,33 +117,6 @@ def find_bus_at_stop(c, world):
 def neighbors(x, y):
     return [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
 
-
-def build_blocked(world):
-    blocked = set()
-
-    # props (walls etc.)
-    for p in world.get("props", []):
-        if not p.get("walkable", True):
-            blocked.add((p["x"], p["y"]))
-
-    # doors (closed = blocked)
-    for b in world.get("buildings", []):
-        for d in b.get("doors", []):
-            if not d.get("is_open", True):
-                blocked.add((d["x"], d["y"]))
-
-    return blocked
-
-def try_open_door(c, world):
-    for b in world.get("buildings", []):
-        for d in b.get("doors", []):
-            if abs(d["x"] - c["x"]) + abs(d["y"] - c["y"]) == 1:
-                if not d.get("is_open"):
-                    d["is_open"] = True
-                    return True
-    return False
-
-
 # =========================
 # TARGET HELPER (UNCHANGED)
 # =========================
@@ -199,37 +172,42 @@ def execute(c, decision, world):
     # 🔥 UPDATED MOVEMENT
     # =========================
     if name == "move":
-
-        tgt = action.get("target_tile", {})
-        tx = int(tgt.get("x", c["x"]))
-        ty = int(tgt.get("y", c["y"]))
-
         path = find_path(c, tx, ty, world)
 
-        if path:
-            nx, ny = path[0]
+        # 🔥 PATH FAILED
+        if not path:
+            release_reservation(c, world)
+            c["activity"] = None
+            return
 
-            c["facing"] = compute_facing(c["x"], c["y"], nx, ny)
-            c["x"] = nx
-            c["y"] = ny
+        nx, ny = path[0]
+
+        c["facing"] = compute_facing(c["x"], c["y"], nx, ny)
+
+        c["x"] = nx
+        c["y"] = ny
 
         c["is_moving"] = True
    elif name == "wait":
 
-    c["activity"] = {
+        c["activity"] = {
         "name": "wait",
         "phase": "loop",
         "phase_started": world["tick"],
         "duration": action.get("duration", 2)
-    }     
+        }     
+    # =========================
+    # INTERACT (RESERVATION SYSTEM)
+    # =========================
     elif name == "interact":
 
         prop_id = action.get("prop_id")
         anchor_name = action.get("anchor")
-        anchor_pos = action.get("anchor_pos")  # 🔥 NEW
+        anchor_pos = action.get("anchor_pos")
 
         prop = get_prop_by_id(world, prop_id)
         if not prop:
+            release_reservation(c, world)
             return
 
         anchor = next(
@@ -238,12 +216,24 @@ def execute(c, decision, world):
         )
 
         if not anchor:
+            release_reservation(c, world)
             return
 
-        # 🔥 MUST be adjacent (not on anchor tile)
-        if abs(c["x"] - anchor["x"]) + abs(c["y"] - anchor["y"]) > 1:
-            return  # not in position yet
+        # -----------------
+        # RESERVATION CHECK
+        # -----------------
+        if anchor.get("reserved_by") not in [None, c["id"]]:
+            return
 
+        # -----------------
+        # MUST BE ADJACENT
+        # -----------------
+        if abs(c["x"] - anchor["x"]) + abs(c["y"] - anchor["y"]) > 1:
+            return
+
+        # -----------------
+        # OCCUPIED → WAIT
+        # -----------------
         if anchor.get("occupied_by"):
 
             enqueue_anchor(c, prop, anchor)
@@ -256,24 +246,37 @@ def execute(c, decision, world):
                 "phase_started": world["tick"]
             }
 
-            return            
-            # 🔥 FACE THE ANCHOR
-            if anchor_pos:
-                c["facing"] = compute_facing(
-                    c["x"], c["y"],
-                    anchor_pos["x"], anchor_pos["y"]
-                )
+            return
 
-            reserve_anchor(c, prop, anchor)
+        # -----------------
+        # FACE THE ANCHOR
+        # -----------------
+        if anchor_pos:
+            c["facing"] = compute_facing(
+                c["x"], c["y"],
+                anchor_pos["x"], anchor_pos["y"]
+            )
 
+        # -----------------
+        # OCCUPY ANCHOR
+        # -----------------
+        reserve_anchor(c, prop, anchor)
+
+        # 🔥 reservation consumed
+        anchor["reserved_by"] = None
+        anchor["reserved_until"] = None
+
+        # -----------------
+        # START ACTIVITY
+        # -----------------
         c["activity"] = {
             "name": anchor["interaction"],
             "prop_id": prop_id,
             "anchor": anchor_name,
 
-            "phase": "start",           # 🔥 NEW
+            "phase": "start",
             "phase_started": world["tick"],
-            "duration": 20              # 🔥 TEMP (ticks)
+            "duration": 20
         }
     # =========================
     # SPEECH (UNCHANGED)

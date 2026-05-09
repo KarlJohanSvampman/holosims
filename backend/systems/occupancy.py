@@ -21,7 +21,7 @@ def enqueue_anchor(c, prop, anchor):
     anchor.setdefault("queue", [])
     if c["id"] not in anchor["queue"]:
         anchor["queue"].append(c["id"])
-        
+
 def release_anchor(c, world):
 
     occ = c.get("occupying")
@@ -50,3 +50,24 @@ def release_anchor(c, world):
                     for c2 in world["characters"].values():
                         if c2["id"] == next_id:
                             c2["activity"] = None  # force replan
+
+
+def reserve_anchor_for(c, anchor, world, timeout=10):
+    if anchor.get("occupied_by"):
+        return False
+
+    if anchor.get("reserved_by") and anchor["reserved_by"] != c["id"]:
+        return False
+
+    anchor["reserved_by"] = c["id"]
+    anchor["reserved_until"] = world["tick"] + timeout
+
+    return True
+
+
+def release_reservation(c, world):
+    for p in world.get("props", []):
+        for a in p.get("anchors", []):
+            if a.get("reserved_by") == c["id"]:
+                a["reserved_by"] = None
+                a["reserved_until"] = None
