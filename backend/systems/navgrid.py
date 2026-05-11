@@ -78,7 +78,8 @@ for c in world.get("characters", {}).values():
         # block ALL tiles of prop footprint
         for (px, py) in get_prop_tiles(prop):
             blocked.add((px, py))
-    return blocked
+
+return blocked
 
 
 # =========================
