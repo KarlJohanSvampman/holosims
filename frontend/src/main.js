@@ -697,7 +697,7 @@ function updateSim(id, c) {
   if(!hasUpperAnimation){
     clearUpperAnimation(id);
   }
-
+}
 }
 
 function updateMailboxes(state){
