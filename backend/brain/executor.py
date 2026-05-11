@@ -9,7 +9,7 @@ from systems.emergency import create_911_call
 from systems.activities import update_activity,update_interaction_phases
 from systems.payments import attempt_pay_bills
 from systems.props import find_nearest_prop,get_prop_by_id
-from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor
+from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor, release_reservation
 from systems.phone import make_call
 from systems.commitment import start_commitment
 from systems.habits import record_habit

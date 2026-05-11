@@ -10,6 +10,11 @@ OFFGRID_GOALS = {
     "interview": "go_interview"
 }
 
+intent = choose_intention(c, world)
+
+if intent:
+    goal = intent["goal"]
+    
 def get_best_approach_tile(c, anchor, world):
     blocked = build_blocked_set(world)
 

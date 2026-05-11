@@ -4,8 +4,7 @@ import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
 import { getAnchorWorldPosition, findAnchor, playPropAnimation } from './interactions.js';
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
-const mixers = {};
-const actions = {};
+const characterControllers = {};
 const models = {};
 const canvas=document.getElementById('c');
 const buses = {};
@@ -28,16 +27,6 @@ function update(delta) {
     if (p.mixer) p.mixer.update(delta);
   }
 }
-
-function findAnchorByName(prop, name) {
-  return prop.anchors.find(a => a.name === name);
-}
-
-function getAnchorWorldPosition(anchor) {
-  const pos = new THREE.Vector3();
-  anchor.object.getWorldPosition(pos);
-  return pos;
-}
  
 function applyFacing(mesh, dir) {
   const map = {
@@ -49,30 +38,107 @@ function applyFacing(mesh, dir) {
 
   mesh.rotation.y = map[dir] ?? 0;
 }
-function playAnimation(id, name){
 
-  const map = actions[id];
-  if(!map) return;
+// =========================
+// 🎬 ANIMATION CONTROLLER
+// =========================
 
-  const lower = name.toLowerCase();
+function createAnimationController(model, mixer, clips){
 
-  let action = map[lower];
+  const actions = {};
 
-  if(!action){
-    // fallback
-    action = map["idle"];
-  }
-
-  if(!action) return;
-
-  Object.values(map).forEach(a=>{
-    if(a !== action){
-      a.fadeOut(0.2);
-    }
+  clips.forEach((clip)=>{
+    actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
   });
 
-  action.reset().fadeIn(0.2).play();
+  return {
+    mixer,
+    actions,
+
+    baseAction: null,
+    upperAction: null,
+
+    currentBase: null,
+    currentUpper: null
+  };
 }
+
+
+// =========================
+// BASE LAYER
+// =========================
+function playBaseAnimation(id, clipName){
+
+  const ctrl = characterControllers[id];
+  if(!ctrl) return;
+
+  clipName = clipName.toLowerCase();
+
+  if(ctrl.currentBase === clipName) return;
+
+  const next = ctrl.actions[clipName]
+    || ctrl.actions["idle"];
+
+  if(!next) return;
+
+  if(ctrl.baseAction){
+    ctrl.baseAction.fadeOut(0.25);
+  }
+
+  next.reset();
+  next.fadeIn(0.25);
+  next.play();
+
+  ctrl.baseAction = next;
+  ctrl.currentBase = clipName;
+}
+
+
+// =========================
+// UPPER BODY LAYER
+// =========================
+function playUpperAnimation(id, clipName){
+
+  const ctrl = characterControllers[id];
+  if(!ctrl) return;
+
+  clipName = clipName.toLowerCase();
+
+  if(ctrl.currentUpper === clipName) return;
+
+  const next = ctrl.actions[clipName];
+
+  if(!next) return;
+
+  if(ctrl.upperAction){
+    ctrl.upperAction.fadeOut(0.2);
+  }
+
+  next.reset();
+  next.fadeIn(0.2);
+  next.play();
+
+  ctrl.upperAction = next;
+  ctrl.currentUpper = clipName;
+}
+
+
+// =========================
+// CLEAR UPPER LAYER
+// =========================
+function clearUpperAnimation(id){
+
+  const ctrl = characterControllers[id];
+  if(!ctrl) return;
+
+  if(ctrl.upperAction){
+    ctrl.upperAction.fadeOut(0.2);
+  }
+
+  ctrl.upperAction = null;
+  ctrl.currentUpper = null;
+}
+
 
 function updateCars(state){
 
@@ -128,41 +194,43 @@ function createSim(id){
 
     const mixer = new THREE.AnimationMixer(model);
 
-    const clips = gltf.animations;
+    const controller = createAnimationController(
+      model,
+      mixer,
+      gltf.animations
+    );
 
-    const map = {};
+    characterControllers[id] = controller;
 
-    clips.forEach(clip=>{
-      map[clip.name.toLowerCase()] = mixer.clipAction(clip);
-    });
-
-    mixers[id] = mixer;
-    actions[id] = map;
     models[id] = model;
-
     sims[id] = model;
 
     labels[id] = makeDiv('label');
     bubbles[id] = makeDiv('bubble');
+
     bubbles[id].style.display='none';
 
-    playAnimation(id, "idle");
+    playBaseAnimation(id, "idle");
   });
 }
-function updateSim(id,c){
 
-  if(!sims[id]) {
+function updateSim(id, c) {
+
+  // =========================
+  // CREATE IF MISSING
+  // =========================
+  if (!sims[id]) {
     createSim(id);
-    return; // wait until model loads
+    return;
   }
 
   const mesh = sims[id];
-  if(!mesh) return;
+  if (!mesh) return;
 
   // =========================
-  // POSITION
+  // BASE POSITION
   // =========================
-  mesh.position.set(c.x-10,.5,c.y-7);
+  mesh.position.set(c.x - 10, 0.5, c.y - 7);
 
   // =========================
   // FACING
@@ -170,102 +238,204 @@ function updateSim(id,c){
   if (c.facing) {
     applyFacing(mesh, c.facing);
   }
-// =========================
-// 🎬 FULL INTERACTION SYSTEM
-// =========================
-
-let anim = "idle";
-
-// -----------------
-// MOVEMENT
-// -----------------
-if (c.is_moving) {
-  anim = "walk";
-}
-
-// -----------------
-// INTERACTION (NEW SYSTEM)
-// -----------------
-if (c.activity?.prop_id) {
-
-  const prop = propRegistry[c.activity.prop_id];
-  if (!prop) return;
-
-  // 🔥 IMPORTANT: use anchor NAME (not interaction type)
-  const anchor = prop.anchors.find(
-    a => a.name === c.activity.anchor
-  );
-
-  if (!anchor) return;
-
-  // -----------------
-  // POSITION (snap to anchor)
-  // -----------------
-  const pos = getAnchorWorldPosition(anchor);
-  mesh.position.copy(pos);
-
-  // -----------------
-  // FACING (towards anchor direction handled backend)
-  // -----------------
-  if (c.facing) {
-    applyFacing(mesh, c.facing);
-  }
-
-  // -----------------
-  // 🎬 PLAY CHARACTER ANIMATION
-  // -----------------
-  const phase = c.activity.phase || "loop";
-
-  const animMap = anchor.interaction.animations;
-
-  let clipName = null;
-
-  if (phase === "start") {
-    clipName = animMap.start;
-  } else if (phase === "loop") {
-    clipName = animMap.loop;
-  } else if (phase === "stop") {
-    clipName = animMap.stop;
-  } else if (phase === "interrupt") {
-    clipName = animMap.interrupted;
-  }
-
-  if (clipName) {
-    playAnimation(id, clipName);
-  }
-
-  // -----------------
-  // 🎬 PLAY PROP ANIMATION (doors, beds, etc)
-  // -----------------
-  playPropAnimation(prop, anchor, phase);
-
-  return;
-}
-
-  // transport override
-  if (c.transport?.mode === "car") {
-    anim = "drive";
-  }
-
-  if(c.phone?.notifications?.length){
-    showPhoneIcon(c);
-}
-
-  // play animation
-  playAnimation(id, anim);
 
   // =========================
-  // UI (leave untouched)
+  // DEFAULT BASE ANIMATION
+  // =========================
+  let baseAnim = "idle";
+
+  // locomotion
+  if (c.is_moving) {
+    baseAnim = "walk";
+  }
+
+  // transport
+  if (c.transport?.mode === "car") {
+    baseAnim = "drive";
+  }
+
+  // seated / lying states
+  if (c.activity?.name) {
+
+    if (
+      [
+        "sit",
+        "sleep",
+        "lie",
+        "lie_down"
+      ].includes(c.activity.name)
+    ) {
+      baseAnim = c.activity.name;
+    }
+  }
+
+  // =========================
+  // PLAY BASE LAYER
+  // =========================
+  playBaseAnimation(id, baseAnim);
+
+  // =========================
+  // CLEAR UPPER LAYER
+  // =========================
+  clearUpperAnimation(id);
+
+  // =========================
+  // INTERACTION SYSTEM
+  // =========================
+  if (c.activity?.prop_id) {
+
+    const prop = propRegistry[c.activity.prop_id];
+
+    if (prop) {
+
+      // -----------------
+      // FIND ANCHOR
+      // -----------------
+      const anchor = prop.anchors.find(
+        a => a.name === c.activity.anchor
+      );
+
+      if (anchor) {
+
+        // -----------------
+        // SNAP TO ANCHOR
+        // -----------------
+        const pos = getAnchorWorldPosition(anchor);
+
+        mesh.position.copy(pos);
+
+        // slight vertical offset
+        mesh.position.y += 0.01;
+
+        // -----------------
+        // FACING
+        // -----------------
+        if (c.facing) {
+          applyFacing(mesh, c.facing);
+        }
+
+        // -----------------
+        // ANIMATION PHASES
+        // -----------------
+        const phase = c.activity.phase || "loop";
+
+        const animMap = anchor.interaction?.animations || {};
+
+        let clipName = null;
+
+        if (phase === "start") {
+          clipName = animMap.start;
+        }
+        else if (phase === "loop") {
+          clipName = animMap.loop;
+        }
+        else if (phase === "stop") {
+          clipName = animMap.stop;
+        }
+        else if (phase === "interrupt") {
+          clipName = animMap.interrupted;
+        }
+
+        // -----------------
+        // CHARACTER ANIMATION
+        // -----------------
+        if (clipName) {
+
+          const lower = clipName.toLowerCase();
+
+          // full-body interactions
+          if (
+            [
+              "sit",
+              "sleep",
+              "lie_down",
+              "wake_up"
+            ].includes(lower)
+          ) {
+
+            playBaseAnimation(id, lower);
+          }
+
+          // upper-body overlays
+          else {
+
+            playUpperAnimation(id, lower);
+          }
+        }
+
+        // -----------------
+        // PROP ANIMATION
+        // -----------------
+        playPropAnimation(prop, anchor, phase);
+      }
+    }
+  }
+
+  // =========================
+  // SECONDARY ACTIVITY
+  // =========================
+  if (c.secondary_activity?.name) {
+
+    const secondary = c.secondary_activity.name.toLowerCase();
+
+    const upperAllowed = [
+      "talk",
+      "wave",
+      "eat",
+      "drink",
+      "phone",
+      "type"
+    ];
+
+    if (upperAllowed.includes(secondary)) {
+      playUpperAnimation(id, secondary);
+    }
+  }
+
+  // =========================
+  // PHONE NOTIFICATIONS
+  // =========================
+  if (c.phone?.notifications?.length) {
+    showPhoneIcon(c);
+  }
+
+  // =========================
+  // UI LABELS
   // =========================
   labels[id].textContent = c.name || id;
-  bubbles[id].textContent = c.speech || "";
 
+  const speech =
+    c.last_utterance
+    || c.speech
+    || "";
+
+  bubbles[id].textContent = speech;
+
+  // =========================
+  // LABEL POSITION
+  // =========================
   const p = mesh.position.clone().project(camera);
-  const x = (p.x * .5 + .5) * innerWidth;
-  const y = (-p.y * .5 + .5) * innerHeight;
 
-  labels[id].style.transform = `translate(${x}px,${y-20}px)`;
-  bubbles[id].style.transform = `translate(${x}px,${y-40}px)`;
+  const x = (p.x * 0.5 + 0.5) * innerWidth;
+  const y = (-p.y * 0.5 + 0.5) * innerHeight;
+
+  labels[id].style.transform =
+    `translate(${x}px,${y - 20}px)`;
+
+  // =========================
+  // BUBBLE POSITION
+  // =========================
+  bubbles[id].style.transform =
+    `translate(${x}px,${y - 40}px)`;
+
+  // =========================
+  // SHOW / HIDE BUBBLE
+  // =========================
+  if (speech) {
+    bubbles[id].style.display = "block";
+  } else {
+    bubbles[id].style.display = "none";
+  }
 }
   const p=worldToScreen(mesh.position.clone().add(new THREE.Vector3(0,1.4,0)));
   labels[id].style.left=p.x+'px'; labels[id].style.top=p.y+'px'; labels[id].innerText=`${emojiForEmotion(c.emotion)} ${c.name}`;
@@ -307,8 +477,7 @@ const ws = new WebSocket(WS_URL);ws.onopen=()=>{ document.getElementById('overla
 ws.onmessage = (e)=>{
   const state = JSON.parse(e.data);
 ´
-  const delta = clock.getDelta();
-  update(delta);
+
   updateOverlay(state);
   updateDayNight(state.calendar);
   updateCars(state)
@@ -321,5 +490,20 @@ ws.onmessage = (e)=>{
   }
 };
 
-function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera); }
+function animate(){
+
+  requestAnimationFrame(animate);
+
+  const delta = clock.getDelta();
+
+  // update character mixers
+  for(const ctrl of Object.values(characterControllers)){
+    ctrl.mixer.update(delta);
+  }
+
+  // update prop mixers
+  update(delta);
+
+  renderer.render(scene,camera);
+}
 animate();
