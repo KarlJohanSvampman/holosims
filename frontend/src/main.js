@@ -495,7 +495,6 @@ const WS_URL = `ws://${location.hostname}:8000/ws`;
 const ws = new WebSocket(WS_URL);ws.onopen=()=>{ document.getElementById('overlay').innerHTML='Connected'; ws.send('hello'); };
 ws.onmessage = (e)=>{
   const state = JSON.parse(e.data);
-´
 
   updateOverlay(state);
   updateDayNight(state.calendar);

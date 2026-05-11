@@ -1,14 +1,14 @@
-function findAnchorByName(prop, name) {
+export function findAnchor(prop, name) {
   return prop.anchors.find(a => a.name === name);
 }
 
-function getAnchorWorldPosition(anchor) {
+export function getAnchorWorldPosition(anchor) {
   const pos = new THREE.Vector3();
   anchor.object.getWorldPosition(pos);
   return pos;
 }
 
-function playPropAnimation(prop, anchor, phase) {
+export function playPropAnimation(prop, anchor, phase) {
   const anim = anchor.interaction.animations;
 
   let clipName = null;
