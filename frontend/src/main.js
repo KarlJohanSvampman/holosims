@@ -27,6 +27,25 @@ function update(delta) {
     if (p.mixer) p.mixer.update(delta);
   }
 }
+
+function chooseVariant(value){
+
+  if(!value) return null;
+
+  // single animation
+  if(typeof value === "string"){
+    return value;
+  }
+
+  // random array
+  if(Array.isArray(value)){
+    return value[
+      Math.floor(Math.random() * value.length)
+    ];
+  }
+
+  return null;
+}
  
 function applyFacing(mesh, dir) {
   const map = {
@@ -324,16 +343,16 @@ function updateSim(id, c) {
         let clipName = null;
 
         if (phase === "start") {
-          clipName = animMap.start;
+          clipName = chooseVariant(animMap.start);
         }
         else if (phase === "loop") {
-          clipName = animMap.loop;
+          clipName = chooseVariant(animMap.loop);
         }
         else if (phase === "stop") {
-          clipName = animMap.stop;
+          clipName = chooseVariant(animMap.stop);
         }
         else if (phase === "interrupt") {
-          clipName = animMap.interrupted;
+          clipName = chooseVariant(animMap.interrupted);
         }
 
         // -----------------
