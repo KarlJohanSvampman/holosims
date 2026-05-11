@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
 import { getAnchorWorldPosition, findAnchor, playPropAnimation } from './interactions.js';
+import { ComputeNode } from "three/webgpu";
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const characterControllers = {};
@@ -20,14 +21,172 @@ window.addEventListener('resize',()=>renderer.setSize(innerWidth,innerHeight));
 scene.add(new THREE.AmbientLight(0xffffff,.4));
 const light=new THREE.DirectionalLight(0xffffff,1); light.position.set(5,10,5); scene.add(light);
 scene.add(new THREE.GridHelper(24,24));
-
-
+let definitions = {};
+const propRegistry = {};
+const loadingCharacters = {};
+const propAnimationStates = {};
 function update(delta) {
   for (const p of Object.values(propRegistry)) {
     if (p.mixer) p.mixer.update(delta);
   }
 }
 
+function getPropTemplate(state, prop){
+
+  return (
+    state
+    ?.definitions
+    ?.prop_templates
+    ?.[prop.template]
+  );
+}
+
+function loadProp(state, prop){
+
+  if(propRegistry[prop.id]) return;
+
+  propRegistry[prop.id] = {
+    loading: true
+  };
+
+  const template = getPropTemplate(state, prop);
+
+  if(!template) return;
+
+  loader.load(template.model, (gltf)=>{
+
+    const model = gltf.scene;
+
+    // -------------------------
+    // POSITION
+    // -------------------------
+    model.position.set(
+      prop.x - 10,
+      0,
+      prop.y - 7
+    );
+
+    // -------------------------
+    // ROTATION
+    // -------------------------
+    model.rotation.y =
+      prop.rotation || 0;
+
+    // -------------------------
+    // PROP MIXER
+    // -------------------------
+    const mixer =
+      new THREE.AnimationMixer(model);
+
+    const actions = {};
+
+    gltf.animations.forEach((clip)=>{
+
+      actions[
+        clip.name.toLowerCase()
+      ] = mixer.clipAction(clip);
+    });
+
+    // -------------------------
+    // FIND ANCHORS
+    // -------------------------
+    const anchors = [];
+
+    model.traverse((o)=>{
+
+      if(
+        o.name
+        .toLowerCase()
+        .startsWith("anchor_")
+      ){
+
+        const interactionName =
+          o.userData.interaction;
+
+        anchors.push({
+
+          name: o.name,
+
+          object: o,
+
+          interactionName
+        });
+      }
+    });
+
+    // -------------------------
+    // SAVE REGISTRY
+    // -------------------------
+    propRegistry[prop.id] = {
+
+      id: prop.id,
+
+      mesh: model,
+
+      mixer,
+      actions,
+
+      anchors,
+
+      template
+    };
+
+    scene.add(model);
+  });
+}
+
+function updateProps(state){
+
+  const activeIds = new Set(
+  (state.props || []).map(p => p.id)
+  );
+
+  for(const id of Object.keys(propRegistry)){
+
+    if(!activeIds.has(id)){
+
+
+
+      const p = propRegistry[id];
+
+      for(const key of Object.keys(propAnimationStates)){
+
+        if(key.startsWith(id + "_")){
+          delete propAnimationStates[key];
+      }
+    }
+
+      if(p.mesh){
+        scene.remove(p.mesh);
+      }
+
+      delete propRegistry[id];
+    }
+  }
+  
+
+  for(const prop of state.props || []){
+
+    // create if missing
+    if(!propRegistry[prop.id]){
+      loadProp(state, prop);
+      continue;
+    }
+
+    const p = propRegistry[prop.id];
+    
+    if(p.loading) continue;
+    // sync transform
+    p.mesh.position.set(
+      prop.x - 10,
+      0,
+      prop.y - 7
+    );
+
+    p.mesh.rotation.y =
+      prop.rotation || 0;
+  }
+}
 function chooseVariant(value){
 
   if(!value) return null;
@@ -163,7 +322,9 @@ function updateCars(state){
 
   for(const p of state.props || []){
 
-    if(p.type !== "car") continue;
+    const template = getPropTemplate(state, p);
+
+    if(template?.category !== "vehicles") continue;
 
     if(!cars[p.id]){
       const mesh = new THREE.Mesh(
@@ -203,9 +364,14 @@ const raycaster=new THREE.Raycaster(); const mouse=new THREE.Vector2();
 
 function worldToScreen(pos){ const v=pos.clone().project(camera); return {x:(v.x*.5+.5)*innerWidth, y:(-v.y*.5+.5)*innerHeight}; }
 function makeDiv(cls){ const d=document.createElement('div'); d.className=cls; document.body.appendChild(d); return d; }
-function createSim(id){
-
-  loader.load('/resources/characters/base.glb', (gltf)=>{
+function createSim(id, character){
+  const template =
+    definitions
+    ?.character_templates
+    ?.[character.template];
+    const modelPath = template?.model
+  || '/resources/characters/base.glb';
+  loader.load(modelPath, (gltf)=>{
 
     const model = gltf.scene;
 
@@ -230,7 +396,11 @@ function createSim(id){
     bubbles[id].style.display='none';
 
     playBaseAnimation(id, "idle");
+
+    delete loadingCharacters[id];
+
   });
+
 }
 
 function updateSim(id, c) {
@@ -239,9 +409,15 @@ function updateSim(id, c) {
   // CREATE IF MISSING
   // =========================
   if (!sims[id]) {
-    createSim(id);
+
+    if(!loadingCharacters[id]){
+      loadingCharacters[id] = true;
+      createSim(id, c);
+    }
+
     return;
   }
+
 
   const mesh = sims[id];
   if (!mesh) return;
@@ -338,8 +514,13 @@ function updateSim(id, c) {
         // -----------------
         const phase = c.activity.phase || "loop";
 
-        const animMap = anchor.interaction?.animations || {};
+        const interactionTemplate =
+          definitions
+          ?.interaction_templates
+          ?.[anchor.interactionName];
 
+        const animMap =
+          interactionTemplate?.animations || {};
         let clipName = null;
 
         if (phase === "start") {
@@ -381,11 +562,27 @@ function updateSim(id, c) {
             playUpperAnimation(id, lower);
           }
         }
-
+  
         // -----------------
         // PROP ANIMATION
         // -----------------
-        playPropAnimation(prop, anchor, phase);
+        const animKey =
+          `${prop.id}_${anchor.name}`;
+
+        const previousPhase =
+          propAnimationStates[animKey];
+
+        // only trigger if phase changed
+        if(previousPhase !== phase){
+
+          playPropAnimation(
+            prop,
+            anchor,
+            phase
+          );
+
+          propAnimationStates[animKey] = phase;
+        }      
       }
     }
   }
@@ -455,11 +652,8 @@ function updateSim(id, c) {
   } else {
     bubbles[id].style.display = "none";
   }
+
 }
-  const p=worldToScreen(mesh.position.clone().add(new THREE.Vector3(0,1.4,0)));
-  labels[id].style.left=p.x+'px'; labels[id].style.top=p.y+'px'; labels[id].innerText=`${emojiForEmotion(c.emotion)} ${c.name}`;
-  const txt=c.last_utterance || (c.is_on_phone?'📱':'');
-  if(txt){ const bp=worldToScreen(mesh.position.clone().add(new THREE.Vector3(0,2.1,0))); bubbles[id].style.display='block'; bubbles[id].style.left=bp.x+'px'; bubbles[id].style.top=bp.y+'px'; bubbles[id].innerText=txt; } else bubbles[id].style.display='none';
 
 function updateMailboxes(state){
   for(const m of state.mailboxes||[]){
@@ -495,14 +689,14 @@ const WS_URL = `ws://${location.hostname}:8000/ws`;
 const ws = new WebSocket(WS_URL);ws.onopen=()=>{ document.getElementById('overlay').innerHTML='Connected'; ws.send('hello'); };
 ws.onmessage = (e)=>{
   const state = JSON.parse(e.data);
-
+  definitions = state.definitions || {};
   updateOverlay(state);
   updateDayNight(state.calendar);
   updateCars(state)
   updateBuses(state);
   updateMailboxes(state);
   updateResponders(state);
-
+  updateProps(state);
   for(const [id,c] of Object.entries(state.characters||{})) {
     updateSim(id,c);
   }

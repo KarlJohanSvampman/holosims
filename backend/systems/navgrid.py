@@ -8,9 +8,11 @@ def get_prop_tiles(prop):
 
     tiles = []
 
-    footprint = prop.get(
+    template = get_prop_template(world, prop)
+
+    footprint = template.get(
         "footprint",
-        [{"dx": 0, "dy": 0}]
+        [{"dx":0,"dy":0}]
     )
 
     rot = prop.get("rotation", 0)
