@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
 import { getAnchorWorldPosition, findAnchor, playPropAnimation } from './interactions.js';
-import { ComputeNode } from "three/webgpu";
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const characterControllers = {};
@@ -24,7 +23,7 @@ scene.add(new THREE.GridHelper(24,24));
 let definitions = {};
 const propRegistry = {};
 const loadingCharacters = {};
-const propAnimationStates = {};
+const interactionStates = {};
 function update(delta) {
   for (const p of Object.values(propRegistry)) {
     if (p.mixer) p.mixer.update(delta);
@@ -185,6 +184,38 @@ function updateProps(state){
 
     p.mesh.rotation.y =
       prop.rotation || 0;
+  }
+}
+
+
+
+function cleanupInteractionStates(state){
+
+  const active = new Set();
+
+  for(
+    const c of Object.values(
+      state.characters || {}
+    )
+  ){
+
+    const iid =
+      c.activity?.interaction_id;
+
+    if(iid){
+      active.add(iid);
+    }
+  }
+
+  for(
+    const iid of Object.keys(
+      interactionStates
+    )
+  ){
+
+    if(!active.has(iid)){
+      delete interactionStates[iid];
+    }
   }
 }
 function chooseVariant(value){
@@ -472,7 +503,7 @@ function updateSim(id, c) {
   // =========================
   // CLEAR UPPER LAYER
   // =========================
-  clearUpperAnimation(id);
+  let hasUpperAnimation = false;
 
   // =========================
   // INTERACTION SYSTEM
@@ -558,31 +589,41 @@ function updateSim(id, c) {
 
           // upper-body overlays
           else {
-
-            playUpperAnimation(id, lower);
+            hasUpperAnimation = true;
           }
         }
   
         // -----------------
         // PROP ANIMATION
         // -----------------
-        const animKey =
-          `${prop.id}_${anchor.name}`;
+      
+       // only trigger if phase changed
+      const interactionId = c.activity.interaction_id;
 
-        const previousPhase =
-          propAnimationStates[animKey];
+      if(interactionId){
 
-        // only trigger if phase changed
-        if(previousPhase !== phase){
+        const stateKey = `${interactionId}_${phase}`;
 
-          playPropAnimation(
-            prop,
-            anchor,
-            phase
-          );
+        const previous =interactionStates[
+        interactionId
+      ];
 
-          propAnimationStates[animKey] = phase;
-        }      
+      // only trigger ONCE
+      if(previous !== stateKey){
+
+        // -------------------------
+        // PROP ANIMATION
+        // -------------------------
+        playPropAnimation(
+          prop,
+          interactionTemplate,
+          phase
+        );
+
+        interactionStates[
+          interactionId
+        ] = stateKey;
+      }
       }
     }
   }
@@ -653,6 +694,10 @@ function updateSim(id, c) {
     bubbles[id].style.display = "none";
   }
 
+  if(!hasUpperAnimation){
+    clearUpperAnimation(id);
+  }
+
 }
 
 function updateMailboxes(state){
@@ -697,6 +742,7 @@ ws.onmessage = (e)=>{
   updateMailboxes(state);
   updateResponders(state);
   updateProps(state);
+  cleanupInteractionStates(state);
   for(const [id,c] of Object.entries(state.characters||{})) {
     updateSim(id,c);
   }
