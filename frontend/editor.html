@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation Manager</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #1e1f22;
+      color: #e8e8e8;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      width: 280px;
+      background: #2a2c31;
+      border-right: 1px solid #444;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #sidebar h2 {
+      margin: 0;
+      padding: 16px;
+      border-bottom: 1px solid #444;
+      font-size: 18px;
+    }
+
+    #tabs {
+      display: flex;
+      flex-direction: column;
+      padding: 8px;
+      gap: 6px;
+    }
+
+    .tab {
+      background: #383b42;
+      border: none;
+      color: white;
+      padding: 12px;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+
+    .tab.active {
+      background: #4f8cff;
+    }
+
+    #templateList {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .template-item {
+      padding: 10px;
+      margin-bottom: 6px;
+      background: #383b42;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .template-item.active {
+      background: #4f8cff;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #toolbar {
+      height: 60px;
+      border-bottom: 1px solid #444;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 10px;
+      background: #2a2c31;
+    }
+
+    button {
+      background: #4f8cff;
+      color: white;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button.danger {
+      background: #c94848;
+    }
+
+    input {
+      background: #333;
+      border: 1px solid #555;
+      color: white;
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    #editor {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    #jsonEditor {
+      flex: 1;
+      background: #111;
+      color: #00ff90;
+      border: none;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 14px;
+      resize: none;
+      outline: none;
+    }
+
+    #preview {
+      width: 420px;
+      border-left: 1px solid #444;
+      background: #232428;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .preview-card {
+      background: #2f3137;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .preview-title {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: #4f8cff;
+    }
+
+    .field {
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .field span {
+      color: #999;
+    }
+
+    #status {
+      padding: 10px 16px;
+      border-top: 1px solid #444;
+      background: #2a2c31;
+      color: #8dd18d;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="sidebar">
+
+    <h2>Simulation Manager</h2>
+
+    <div id="tabs">
+      <button class="tab active" data-type="prop_templates">Props</button>
+      <button class="tab" data-type="item_templates">Items</button>
+      <button class="tab" data-type="character_templates">Characters</button>
+      <button class="tab" data-type="interaction_templates">Interactions</button>
+      <button class="tab" data-type="activity_templates">Activities</button>
+      <button class="tab" data-type="tile_templates">Tiles</button>
+    </div>
+
+    <div id="templateList"></div>
+
+  </div>
+
+  <div id="main">
+
+    <div id="toolbar">
+
+      <input id="newTemplateName" placeholder="new_template_id" />
+
+      <button id="createBtn">Create</button>
+
+      <button id="saveBtn">Save World</button>
+
+      <button id="duplicateBtn">Duplicate</button>
+
+      <button id="deleteBtn" class="danger">Delete</button>
+
+    </div>
+
+    <div id="editor">
+
+      <textarea id="jsonEditor"></textarea>
+
+      <div id="preview"></div>
+
+    </div>
+
+    <div id="status">
+      Ready.
+    </div>
+
+  </div>
+
+<script>
+
+let world = null;
+let currentCategory = "prop_templates";
+let currentTemplateId = null;
+
+const listEl = document.getElementById("templateList");
+const editorEl = document.getElementById("jsonEditor");
+const previewEl = document.getElementById("preview");
+const statusEl = document.getElementById("status");
+
+// =====================================================
+// LOAD WORLD
+// =====================================================
+async function loadWorld(){
+
+  const res = await fetch(
+    "/api/editor/world?sim_id=default"
+  );
+
+  world = await res.json();
+
+  ensureDefinitions();
+
+  renderTemplateList();
+}
+
+// =====================================================
+// ENSURE DEFINITIONS
+// =====================================================
+function ensureDefinitions(){
+
+  world.definitions ||= {};
+
+  const defs = world.definitions;
+
+  defs.prop_templates ||= {};
+  defs.item_templates ||= {};
+  defs.character_templates ||= {};
+  defs.interaction_templates ||= {};
+  defs.activity_templates ||= {};
+  defs.tile_templates ||= {};
+}
+
+// =====================================================
+// TEMPLATE ACCESSOR
+// =====================================================
+function getTemplates(){
+
+  return world
+    .definitions
+    [currentCategory];
+}
+
+// =====================================================
+// RENDER TEMPLATE LIST
+// =====================================================
+function renderTemplateList(){
+
+  listEl.innerHTML = "";
+
+  const templates = getTemplates();
+
+  Object.keys(templates)
+    .sort()
+    .forEach((id)=>{
+
+      const div = document.createElement("div");
+
+      div.className = "template-item";
+
+      if(id === currentTemplateId){
+        div.classList.add("active");
+      }
+
+      div.textContent = id;
+
+      div.onclick = ()=>{
+
+        currentTemplateId = id;
+
+        renderTemplateList();
+        renderEditor();
+      };
+
+      listEl.appendChild(div);
+    });
+}
+
+// =====================================================
+// RENDER EDITOR
+// =====================================================
+function renderEditor(){
+
+  if(!currentTemplateId){
+
+    editorEl.value = "";
+    previewEl.innerHTML = "";
+
+    return;
+  }
+
+  const template = getTemplates()[currentTemplateId];
+
+  editorEl.value = JSON.stringify(
+    template,
+    null,
+    2
+  );
+
+  renderPreview(template);
+}
+
+// =====================================================
+// PREVIEW PANEL
+// =====================================================
+function renderPreview(template){
+
+  previewEl.innerHTML = "";
+
+  const card = document.createElement("div");
+  card.className = "preview-card";
+
+  const title = document.createElement("div");
+  title.className = "preview-title";
+  title.textContent = currentTemplateId;
+
+  card.appendChild(title);
+
+  Object.entries(template).forEach(([k,v])=>{
+
+    const row = document.createElement("div");
+    row.className = "field";
+
+    row.innerHTML = `
+      <span>${k}:</span>
+      ${typeof v === 'object'
+        ? JSON.stringify(v)
+        : v}
+    `;
+
+    card.appendChild(row);
+  });
+
+  previewEl.appendChild(card);
+}
+
+// =====================================================
+// SAVE TEMPLATE CHANGES
+// =====================================================
+editorEl.addEventListener("input", ()=>{
+
+  if(!currentTemplateId) return;
+
+  try {
+
+    const parsed = JSON.parse(
+      editorEl.value
+    );
+
+    getTemplates()[currentTemplateId] = parsed;
+
+    renderPreview(parsed);
+
+    statusEl.textContent = "Template updated.";
+    statusEl.style.color = "#8dd18d";
+
+  }
+  catch(err){
+
+    statusEl.textContent = err.message;
+    statusEl.style.color = "#ff8080";
+  }
+});
+
+// =====================================================
+// CREATE TEMPLATE
+// =====================================================
+document
+  .getElementById("createBtn")
+  .onclick = ()=>{
+
+  const id =
+    document
+    .getElementById("newTemplateName")
+    .value
+    .trim();
+
+  if(!id) return;
+
+  const templates = getTemplates();
+
+  if(templates[id]){
+
+    alert("Template already exists.");
+    return;
+  }
+
+  templates[id] = getDefaultTemplate();
+
+  currentTemplateId = id;
+
+  renderTemplateList();
+  renderEditor();
+};
+
+// =====================================================
+// DUPLICATE TEMPLATE
+// =====================================================
+document
+  .getElementById("duplicateBtn")
+  .onclick = ()=>{
+
+  if(!currentTemplateId) return;
+
+  const templates = getTemplates();
+
+  const copyId =
+    currentTemplateId + "_copy";
+
+  templates[copyId] = structuredClone(
+    templates[currentTemplateId]
+  );
+
+  currentTemplateId = copyId;
+
+  renderTemplateList();
+  renderEditor();
+};
+
+// =====================================================
+// DELETE TEMPLATE
+// =====================================================
+document
+  .getElementById("deleteBtn")
+  .onclick = ()=>{
+
+  if(!currentTemplateId) return;
+
+  if(!confirm("Delete template?")){
+    return;
+  }
+
+  delete getTemplates()[currentTemplateId];
+
+  currentTemplateId = null;
+
+  renderTemplateList();
+  renderEditor();
+};
+
+// =====================================================
+// SAVE WORLD
+// =====================================================
+document
+  .getElementById("saveBtn")
+  .onclick = async ()=>{
+
+  await fetch(
+    "/api/editor/world?sim_id=default",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(world)
+    }
+  );
+
+  statusEl.textContent = "World saved.";
+  statusEl.style.color = "#8dd18d";
+};
+
+// =====================================================
+// DEFAULT TEMPLATES
+// =====================================================
+function getDefaultTemplate(){
+
+  switch(currentCategory){
+
+    case "prop_templates":
+      return {
+        category: "furniture",
+        model: "/resources/props/example.glb",
+        footprint: [
+          {dx:0,dy:0}
+        ],
+        interactions: []
+      };
+
+    case "item_templates":
+      return {
+        category: "item",
+        model: "/resources/items/example.glb",
+        stackable: false,
+        wearable: false,
+        usable_for: []
+      };
+
+    case "character_templates":
+      return {
+        model: "/resources/characters/base.glb",
+        walk_style: "default"
+      };
+
+    case "interaction_templates":
+      return {
+        animations: {
+          start: [],
+          loop: [],
+          stop: []
+        }
+      };
+
+    case "activity_templates":
+      return {
+        required_items: [],
+        interactions: []
+      };
+
+    case "tile_templates":
+      return {
+        walkable: true,
+        texture: ""
+      };
+  }
+
+  return {};
+}
+
+// =====================================================
+// TAB SWITCHING
+// =====================================================
+document
+  .querySelectorAll(".tab")
+  .forEach((btn)=>{
+
+    btn.onclick = ()=>{
+
+      document
+        .querySelectorAll(".tab")
+        .forEach(t=>t.classList.remove("active"));
+
+      btn.classList.add("active");
+
+      currentCategory = btn.dataset.type;
+
+      currentTemplateId = null;
+
+      renderTemplateList();
+      renderEditor();
+    };
+});
+
+loadWorld();
+
+</script>
+
+</body>
+</html>
