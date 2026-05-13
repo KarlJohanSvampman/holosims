@@ -2,7 +2,7 @@ import json
 from llm.llm_client import call_llm, call_llm_safe
 from systems.props import find_nearest_anchor
 from systems.navgrid import build_blocked_set, is_walkable
-
+from brain.intention import choose_intention
 OFFGRID_GOALS = {
     "work": "go_work",
     "shopping": "go_shopping",
@@ -10,10 +10,7 @@ OFFGRID_GOALS = {
     "interview": "go_interview"
 }
 
-intent = choose_intention(c, world)
 
-if intent:
-    goal = intent["goal"]
     
 def get_best_approach_tile(c, anchor, world):
     blocked = build_blocked_set(world)
@@ -226,6 +223,11 @@ def plan_transport_to_offgrid(c, world, action_name):
 # 🎯 MAIN ENTRY
 # =========================
 async def generate_plan(c, goal, world):
+
+    intent = choose_intention(c, world)
+
+    if intent:
+        goal = intent["goal"]
 
     if not should_replan(c, goal):
         return c.get("plan")

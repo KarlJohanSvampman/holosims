@@ -4,52 +4,147 @@ from brain.memory import store_memory
 from brain.conversation import after_speech, maybe_end
 from brain.relationships import apply_interaction
 from brain.emotion import apply_emotion_inertia
+
 from systems.offgrid import send_offgrid
 from systems.emergency import create_911_call
-from systems.activities import update_activity,update_interaction_phases
+from systems.activities import (
+    update_activity,
+    update_interaction_phases
+)
+
 from systems.payments import attempt_pay_bills
-from systems.props import find_nearest_prop,get_prop_by_id
-from systems.occupancy import find_free_anchor, reserve_anchor, release_anchor, release_reservation
+
+from systems.props import (
+    find_nearest_prop,
+    get_prop_by_id
+)
+
+from systems.occupancy import (
+    find_free_anchor,
+    reserve_anchor,
+    release_anchor,
+    release_reservation
+)
+
 from systems.phone import make_call
 from systems.commitment import start_commitment
 from systems.habits import record_habit
-from systems.navgrid import build_blocked_set, is_walkable
+
+from systems.navgrid import (
+    build_blocked_set,
+    is_walkable
+)
 
 
+# ============================================
+# EMOTION → ACTION OVERRIDES
+# ============================================
 EMOTION_BLOCKS = {
-    "fearful": {"smash": "leave", "yell": "leave", "speak": "leave"},
-    "sad": {"smash": "relax", "yell": "relax"},
-    "awkward": {"smash": "wait", "yell": "wait"},
-    "calm": {"smash": "speak", "yell": "speak"},
-    "annoyed": {"smash": "yell"},
-    "curious": {"smash": "observe"}
+    "fearful": {
+        "smash": "leave",
+        "yell": "leave",
+        "speak": "leave"
+    },
+
+    "sad": {
+        "smash": "relax",
+        "yell": "relax"
+    },
+
+    "awkward": {
+        "smash": "wait",
+        "yell": "wait"
+    },
+
+    "calm": {
+        "smash": "speak",
+        "yell": "speak"
+    },
+
+    "annoyed": {
+        "smash": "yell"
+    },
+
+    "curious": {
+        "smash": "observe"
+    }
 }
 
+
+# ============================================
+# HELPERS
+# ============================================
 def enqueue_anchor(c, prop, anchor):
-    anchor.setdefault("queue", []   )
+
+    anchor.setdefault("queue", [])
+
     if c["id"] not in anchor["queue"]:
         anchor["queue"].append(c["id"])
 
+
 def compute_facing(cx, cy, tx, ty):
+
     dx = tx - cx
     dy = ty - cy
 
     if abs(dx) > abs(dy):
         return "east" if dx > 0 else "west"
-    else:
-        return "south" if dy > 0 else "north"
+
+    return "south" if dy > 0 else "north"
 
 
 def is_occupied(x, y, world, ignore_id=None):
+
     for c2 in world.get("characters", {}).values():
+
         if c2["id"] == ignore_id:
             continue
+
         if (c2["x"], c2["y"]) == (x, y):
             return True
+
     return False
 
 
+def neighbors(x, y):
+
+    return [
+        (x + 1, y),
+        (x - 1, y),
+        (x, y + 1),
+        (x, y - 1)
+    ]
+
+
+def is_adjacent(c, pos):
+
+    return (
+        abs(c["x"] - pos["x"])
+        + abs(c["y"] - pos["y"])
+    ) <= 1
+
+
+def face_target(c, pos):
+
+    c["facing"] = compute_facing(
+        c["x"],
+        c["y"],
+        pos["x"],
+        pos["y"]
+    )
+
+
+def snap_to_anchor(c, anchor):
+
+    c["x"] = anchor["x"]
+    c["y"] = anchor["y"]
+
+
+# ============================================
+# PATHFINDING
+# ============================================
 def find_path(c, tx, ty, world):
+
     start = (c["x"], c["y"])
     goal = (tx, ty)
 
@@ -59,9 +154,9 @@ def find_path(c, tx, ty, world):
     visited = {start}
 
     while queue:
+
         (x, y), path = queue.popleft()
 
-        # 🎯 reached goal
         if (x, y) == goal:
             return path
 
@@ -70,34 +165,57 @@ def find_path(c, tx, ty, world):
             if (nx, ny) in visited:
                 continue
 
-            # -----------------
-            # GRID BOUNDS
-            # -----------------
+            # -----------------------------
+            # GRID LIMITS
+            # -----------------------------
             if nx < 0 or ny < 0:
                 continue
-            if nx >= world["grid"]["width"] or ny >= world["grid"]["height"]:
+
+            if nx >= world["grid"]["width"]:
                 continue
 
-            # -----------------
+            if ny >= world["grid"]["height"]:
+                continue
+
+            # -----------------------------
             # WALKABILITY
-            # -----------------
-            # 🔥 allow stepping onto goal even if blocked
+            # -----------------------------
             if (nx, ny) != goal:
-                if not is_walkable(nx, ny, world, blocked):
+
+                if not is_walkable(
+                    nx,
+                    ny,
+                    world,
+                    blocked
+                ):
                     continue
 
-                # optional: avoid other sims
-                if is_occupied(nx, ny, world, ignore_id=c["id"]):
+                if is_occupied(
+                    nx,
+                    ny,
+                    world,
+                    ignore_id=c["id"]
+                ):
                     continue
 
             visited.add((nx, ny))
-            queue.append(((nx, ny), path + [(nx, ny)]))
+
+            queue.append(
+                (
+                    (nx, ny),
+                    path + [(nx, ny)]
+                )
+            )
 
     return []
 
+
+# ============================================
+# BUS
+# ============================================
 def find_bus_at_stop(c, world):
 
-    for e in world["entities"].values():
+    for e in world.get("entities", {}).values():
 
         bus = e["components"].get("bus")
         pos = e["components"].get("position")
@@ -105,328 +223,492 @@ def find_bus_at_stop(c, world):
         if not bus:
             continue
 
-        if bus["state"] == "stopped":
-            if abs(pos["x"] - c["x"]) + abs(pos["y"] - c["y"]) <= 1:
-                return {"id": e["id"], "position": pos, "passengers": bus["passengers"]}
+        if bus["state"] != "stopped":
+            continue
+
+        dist = (
+            abs(pos["x"] - c["x"])
+            + abs(pos["y"] - c["y"])
+        )
+
+        if dist <= 1:
+
+            return {
+                "id": e["id"],
+                "position": pos,
+                "passengers": bus["passengers"]
+            }
 
     return None
 
-# =========================
-# PATHFINDING (NEW)
-# =========================
-def neighbors(x, y):
-    return [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
 
-# =========================
-# TARGET HELPER (UNCHANGED)
-# =========================
+# ============================================
+# TARGET HELPER
+# ============================================
 def _target(c, world, action):
+
     tid = action.get("target_character_id")
-    if tid in world["characters"]:
+
+    if tid in world.get("characters", {}):
         return world["characters"][tid]
 
     others = [
-        o for o in world["characters"].values()
-        if o["id"] != c["id"] and not o.get("off_grid")
+
+        o for o in world.get("characters", {}).values()
+
+        if o["id"] != c["id"]
+        and not o.get("off_grid")
     ]
-    others.sort(key=lambda o: abs(o["x"] - c["x"]) + abs(o["y"] - c["y"]))
+
+    others.sort(
+        key=lambda o:
+        abs(o["x"] - c["x"])
+        + abs(o["y"] - c["y"])
+    )
+
     return others[0] if others else None
 
 
-# =========================
-# MAIN EXECUTION
-# =========================
+# ============================================
+# EXECUTION
+# ============================================
 def execute(c, decision, world):
 
     update_interaction_phases(c, world)
-    
-    # 🔥 BLOCK MOVEMENT DURING ANIMATION
+
+    # ========================================
+    # BLOCK MOVEMENT DURING START/STOP PHASES
+    # ========================================
     act = c.get("activity")
+
     if act and act.get("phase") in ["start", "stop"]:
         return
 
+    # ========================================
+    # ACTIVE ACTIVITY UPDATE
+    # ========================================
     if update_activity(c, world):
-        return  
+        return
 
     if not decision:
         return
 
-    emotion = decision.get("emotion", c.get("emotion", "calm"))
+    emotion = decision.get(
+        "emotion",
+        c.get("emotion", "calm")
+    )
+
     apply_emotion_inertia(c, emotion)
+
     c["emotion"] = emotion
     c["mood"] = emotion
 
     action = decision.get("action", {})
-    name = EMOTION_BLOCKS.get(emotion, {}).get(
-        action.get("name", "wait"),
-        action.get("name", "wait")
-    )
 
-    utterance = (action.get("utterance") or "").strip()
+    raw_name = action.get("name", "wait")
+
+    name = EMOTION_BLOCKS.get(
+        emotion,
+        {}
+    ).get(raw_name, raw_name)
+
+    utterance = (
+        action.get("utterance")
+        or ""
+    ).strip()
 
     c["last_action"] = name
-    c["internal_thought"] = decision.get("thought", c.get("internal_thought", ""))
+
+    c["internal_thought"] = decision.get(
+        "thought",
+        c.get("internal_thought", "")
+    )
 
     c["is_moving"] = False
-    # =========================
-    # 🔥 UPDATED MOVEMENT
-    # =========================
+
+    # ========================================
+    # MOVE
+    # ========================================
     if name == "move":
+
+        tx = action.get("x")
+        ty = action.get("y")
+
+        if tx is None or ty is None:
+            return
+
         path = find_path(c, tx, ty, world)
 
-        # 🔥 PATH FAILED
         if not path:
+
             release_reservation(c, world)
+
             c["activity"] = None
+
             return
 
         nx, ny = path[0]
 
-        c["facing"] = compute_facing(c["x"], c["y"], nx, ny)
+        c["facing"] = compute_facing(
+            c["x"],
+            c["y"],
+            nx,
+            ny
+        )
 
         c["x"] = nx
         c["y"] = ny
 
         c["is_moving"] = True
-   elif name == "wait":
+
+    # ========================================
+    # WAIT
+    # ========================================
+    elif name == "wait":
 
         c["activity"] = {
-        "name": "wait",
-        "phase": "loop",
-        "phase_started": world["tick"],
-        "duration": action.get("duration", 2)
-        }     
-    # =========================
-    # INTERACT (RESERVATION SYSTEM)
-    # =========================
+
+            "name": "wait",
+
+            "phase": "loop",
+
+            "phase_started": world["tick"],
+
+            "duration": action.get(
+                "duration",
+                2
+            )
+        }
+
+    # ========================================
+    # INTERACT
+    # ========================================
     elif name == "interact":
 
         prop_id = action.get("prop_id")
         anchor_name = action.get("anchor")
-        anchor_pos = action.get("anchor_pos")
 
-        prop = get_prop_by_id(world, prop_id)
+        prop = get_prop_by_id(
+            world,
+            prop_id
+        )
+
         if not prop:
+
             release_reservation(c, world)
+
             return
 
         anchor = next(
-            (a for a in prop.get("anchors", []) if a["name"] == anchor_name),
+
+            (
+                a for a in prop.get("anchors", [])
+                if a["name"] == anchor_name
+            ),
+
             None
         )
 
         if not anchor:
+
             release_reservation(c, world)
+
             return
 
-        # -----------------
-        # RESERVATION CHECK
-        # -----------------
+        # -----------------------------
+        # RESERVED BY SOMEONE ELSE
+        # -----------------------------
         if anchor.get("reserved_by") not in [None, c["id"]]:
             return
 
-        # -----------------
+        # -----------------------------
         # MUST BE ADJACENT
-        # -----------------
-        if abs(c["x"] - anchor["x"]) + abs(c["y"] - anchor["y"]) > 1:
+        # -----------------------------
+        if not is_adjacent(c, anchor):
             return
 
-        # -----------------
-        # OCCUPIED → WAIT
-        # -----------------
+        # -----------------------------
+        # OCCUPIED
+        # -----------------------------
         if anchor.get("occupied_by"):
 
             enqueue_anchor(c, prop, anchor)
 
             c["activity"] = {
+
                 "name": "waiting_for_anchor",
+
                 "prop_id": prop_id,
+
                 "anchor": anchor_name,
+
                 "phase": "loop",
+
                 "phase_started": world["tick"]
             }
 
             return
 
-        # -----------------
-        # FACE THE ANCHOR
-        # -----------------
-        if anchor_pos:
-            c["facing"] = compute_facing(
-                c["x"], c["y"],
-                anchor_pos["x"], anchor_pos["y"]
-            )
+        # -----------------------------
+        # FACE ANCHOR
+        # -----------------------------
+        face_target(c, anchor)
 
-        # -----------------
-        # OCCUPY ANCHOR
-        # -----------------
-        reserve_anchor(c, prop, anchor)
+        # -----------------------------
+        # OCCUPY
+        # -----------------------------
+        reserve_anchor(
+            c,
+            prop,
+            anchor
+        )
 
-        # 🔥 reservation consumed
+        # reservation consumed
         anchor["reserved_by"] = None
         anchor["reserved_until"] = None
 
-        # -----------------
-        # START ACTIVITY
-        # -----------------
+        # -----------------------------
+        # START INTERACTION
+        # -----------------------------
+        interaction_name = anchor.get(
+            "interactionName",
+            "interact"
+        )
+
+        interaction_id = (
+            f"{c['id']}_"
+            f"{prop_id}_"
+            f"{anchor_name}_"
+            f"{world['tick']}"
+        )
+
         c["activity"] = {
-            "name": anchor["interaction"],
+
+            "interaction_id": interaction_id,
+
+            "name": interaction_name,
+
             "prop_id": prop_id,
+
             "anchor": anchor_name,
 
             "phase": "start",
+
             "phase_started": world["tick"],
+
             "duration": 20
         }
-    # =========================
-    # SPEECH (UNCHANGED)
-    # =========================
+
+    # ========================================
+    # SPEECH
+    # ========================================
     elif name in ["speak", "yell"]:
+
         if not utterance:
             return
 
         target = _target(c, world, action)
+
         if not target:
             return
 
         c["last_utterance"] = utterance
-        c.setdefault("speech_bubbles", []).append({
+
+        c.setdefault(
+            "speech_bubbles",
+            []
+        ).append({
+
             "text": utterance,
+
             "tick": world["tick"]
         })
-        c["speech_bubbles"] = c["speech_bubbles"][-4:]
 
-        speech_act = decision.get("speech_act", "statement")
+        c["speech_bubbles"] = \
+            c["speech_bubbles"][-4:]
+
+        speech_act = decision.get(
+            "speech_act",
+            "statement"
+        )
+
         topic = (
+
             decision.get("topic")
-            or (c.get("conversation") or {}).get("topic")
+
+            or (c.get("conversation") or {})
+            .get("topic")
+
             or "general"
         )
 
-        after_speech(c, target, float(decision.get("conversation_score", 50)), topic)
-
-        store_memory(
-            c, utterance, .55,
-            ["conversation", topic, speech_act],
-            "conversation", world["tick"],
-            target=target["id"], speech_act=speech_act
+        after_speech(
+            c,
+            target,
+            float(
+                decision.get(
+                    "conversation_score",
+                    50
+                )
+            ),
+            topic
         )
 
         store_memory(
-            target, utterance, .60,
+            c,
+            utterance,
+            .55,
             ["conversation", topic, speech_act],
-            "conversation", world["tick"],
-            target=c["id"], speech_act=speech_act
+            "conversation",
+            world["tick"],
+            target=target["id"],
+            speech_act=speech_act
         )
 
-        apply_interaction(c, target, speech_act)
+        apply_interaction(
+            c,
+            target,
+            speech_act
+        )
 
-        for kw in decision.get("view_keywords", [])[:8]:
-            c.setdefault("views", []).append({
-                "subject_id": target["id"],
-                "keywords": [kw],
-                "sentiment": 0
-            })
-
-    # =========================
-    # OTHER ACTIONS (UNCHANGED)
-    # =========================
+    # ========================================
+    # LEAVE
+    # ========================================
     elif name == "leave":
+
         c["conversation"] = None
+
         c["x"] = max(0, c["x"] - 1)
 
+    # ========================================
+    # OFFGRID
+    # ========================================
     elif name == "go_work":
+
         c["transport"] = {"mode": "car"}
-        send_offgrid(c, world, "work", 40)
+
+        send_offgrid(
+            c,
+            world,
+            "work",
+            40
+        )
+
     elif name == "go_interview":
-        send_offgrid(c, world, "interview", 20)
+
+        send_offgrid(
+            c,
+            world,
+            "interview",
+            20
+        )
 
     elif name == "go_shopping":
-        send_offgrid(c, world, "shopping", 18)
+
+        send_offgrid(
+            c,
+            world,
+            "shopping",
+            18
+        )
 
     elif name == "go_leisure":
-        send_offgrid(c, world, "leisure", 28)
+
+        send_offgrid(
+            c,
+            world,
+            "leisure",
+            28
+        )
+
+    # ========================================
+    # NEEDS
+    # ========================================
     elif name == "eat":
-        start_commitment(c, "eat", 600)  # 10 minutes
-        record_habit(c, "eat", world)
+
+        start_commitment(
+            c,
+            "eat",
+            600
+        )
+
+        record_habit(
+            c,
+            "eat",
+            world
+        )
+
     elif name == "drink":
-        start_commitment(c, "drink", 10)  # 10 minutes
-        record_habit(c, "drink", world)
+
+        start_commitment(
+            c,
+            "drink",
+            10
+        )
+
+        record_habit(
+            c,
+            "drink",
+            world
+        )
+
     elif name == "sleep":
-        record_habit(c, "sleep", world)
+
+        record_habit(
+            c,
+            "sleep",
+            world
+        )
+
+    # ========================================
+    # PHONE
+    # ========================================
+    elif name == "call":
+
+        target = world["characters"].get(
+            action["target"]
+        )
+
+        if not target:
+            return
+
+        c["is_on_phone"] = True
+
+        make_call(
+            c,
+            target,
+            world
+        )
+
+    elif name == "end_call":
+
+        c["is_on_phone"] = False
+ 
+    # ========================================
+    # EMERGENCY
+    # ========================================
     elif name == "call_911":
-        report = utterance or "There is an emergency here."
-        create_911_call(world, c, action.get("emergency_type") or "police", report)
+
+        report = (
+            utterance
+            or "There is an emergency here."
+        )
+
+        create_911_call(
+            world,
+            c,
+            action.get("emergency_type")
+            or "police",
+            report
+        )
+
         c["last_utterance"] = report
 
-    elif name == "call":
-        target = world["characters"].get(action["target"])
-        if not target:
-            return
-        c["is_on_phone"] = True
-        make_call(c, target, world)
-        store_memory(c,"Talked to {target['name']} on phone", tags=["social","phone"])
-    elif name == "end_call":
-        c["is_on_phone"] = False
-    elif name == "wait_bus":
-        # small delay activity
-        c["activity"] = {
-            "name": "wait_bus",
-            "end_time": world["calendar"]["timestamp"] + 60  # 1 min wait
-        }
-    elif name == "board_bus":
-        bus = find_bus_at_stop(c, world)
-
-        if not bus:
-            return
-
-        if not is_adjacent(c, bus["position"]):
-            return
-
-        face_target(c, bus["position"])
-
-        bus["passengers"].append(c["id"])
-
-        c["transport"] = {"mode": "bus", "bus_id": bus["id"]}
-
-        send_offgrid(c, world, action.get("destination"), 40)
-    elif name == "pay_bills":
-        start_commitment(c, "pay_bills", 1200)  # 10 minutes
-        attempt_pay_bills(c, world)
-    elif name == "use_toilet":
-        start_commitment(c, "use_toilet", 300)  # 10 minutes
-
-        prop_id = action.get("target_prop_id")
-
-        prop = get_prop_by_id(world, prop_id)
-
-        if not prop:
-            return
-
-        anchor = find_free_anchor(prop, "sit")
-
-        if not anchor:
-            return  # no free spot → fail gracefully
-
-        reserve_anchor(c, prop, anchor)
-
-        snap_to_anchor(c, prop, "sit")
-
-        c["needs"]["bladder"] = 0    
-    elif name == "reply_sms":
-
-        target = world["characters"].get(action["target"])
-        if not target:
-            return
-
-        from systems.phone import send_sms
-
-        send_sms(c, target, world, action.get("text", "..."))
+    # ========================================
+    # FALLBACK
+    # ========================================
     else:
-        c["last_utterance"] = (
-            "..."
-            if c.get("conversation") and c["conversation"].get("awaiting") not in [None, c["id"]]
-            else ""
-        )
+
+        c["last_utterance"] = ""
 
     maybe_end(c, world)

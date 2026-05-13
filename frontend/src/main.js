@@ -86,32 +86,40 @@ function loadProp(state, prop){
       ] = mixer.clipAction(clip);
     });
 
-    // -------------------------
-    // FIND ANCHORS
-    // -------------------------
-    const anchors = [];
+    if(lower.startsWith("anchor_")){
 
-    model.traverse((o)=>{
+  const interactionName =
+    o.userData.interaction;
 
-      if(
-        o.name
-        .toLowerCase()
-        .startsWith("anchor_")
-      ){
+  // -------------------------
+  // FIND IK TARGETS
+  // -------------------------
+  const ikTargets = {};
 
-        const interactionName =
-          o.userData.interaction;
+  o.traverse((child)=>{
 
-        anchors.push({
+    if(!child.name) return;
 
-          name: o.name,
+    const childLower =
+      child.name.toLowerCase();
 
-          object: o,
+    if(childLower.startsWith("ik_")){
 
-          interactionName
-        });
-      }
+      ikTargets[childLower] = child;
+    }
+  });
+
+    anchors.push({
+
+      name: o.name,
+
+      object: o,
+
+      interactionName,
+
+      ikTargets
     });
+}
 
     // -------------------------
     // SAVE REGISTRY
@@ -188,6 +196,65 @@ function updateProps(state){
 }
 
 
+function alignBoneToTarget(
+  controller,
+  boneName,
+  targetObject,
+  alpha = 0.15
+){
+
+  if(!targetObject) return;
+
+  const bone =
+    controller.bones?.[
+      boneName.toLowerCase()
+    ];
+
+  if(!bone) return;
+
+  const targetPos =
+    new THREE.Vector3();
+
+  targetObject.getWorldPosition(
+    targetPos
+  );
+
+  bone.parent.worldToLocal(
+    targetPos
+  );
+
+  bone.position.lerp(
+    targetPos,
+    alpha
+  );
+}
+
+function lookBoneAtTarget(
+  controller,
+  boneName,
+  targetObject,
+  alpha = 0.08
+){
+
+  const bone =
+    controller.bones?.[
+      boneName.toLowerCase()
+    ];
+
+  if(!bone || !targetObject) return;
+
+  const targetPos =
+    new THREE.Vector3();
+
+  targetObject.getWorldPosition(
+    targetPos
+  );
+
+  bone.lookAt(targetPos);
+
+  bone.rotation.x *= alpha;
+  bone.rotation.y *= alpha;
+}
 
 function cleanupInteractionStates(state){
 
@@ -416,6 +483,19 @@ function createSim(id, character){
       gltf.animations
     );
 
+    const bones = {};
+
+    model.traverse((o)=>{
+
+      if(o.isBone){
+
+        bones[
+          o.name.toLowerCase()
+        ] = o;
+      }
+    });
+
+    controller.bones = bones;
     characterControllers[id] = controller;
 
     models[id] = model;
@@ -503,131 +583,239 @@ function updateSim(id, c) {
   // =========================
   // CLEAR UPPER LAYER
   // =========================
-  let hasUpperAnimation = false;
+  //let hasUpperAnimation = false;
 
   // =========================
-  // INTERACTION SYSTEM
-  // =========================
-  if (c.activity?.prop_id) {
+// INTERACTION SYSTEM
+// =========================
+if (c.activity?.prop_id) {
 
-    const prop = propRegistry[c.activity.prop_id];
+  const prop = propRegistry[c.activity.prop_id];
 
-    if (prop) {
+  if (prop && !prop.loading) {
 
-      // -----------------
-      // FIND ANCHOR
-      // -----------------
-      const anchor = prop.anchors.find(
-        a => a.name === c.activity.anchor
-      );
+    // -----------------
+    // FIND ANCHOR
+    // -----------------
+    const anchor = prop.anchors.find(
+      a => a.name === c.activity.anchor
+    );
 
-      if (anchor) {
+    if (anchor) {
 
-        // -----------------
-        // SNAP TO ANCHOR
-        // -----------------
-        const pos = getAnchorWorldPosition(anchor);
+      // =========================
+      // SNAP TO ANCHOR
+      // =========================
+      const pos = getAnchorWorldPosition(anchor);
 
-        mesh.position.copy(pos);
+      mesh.position.copy(pos);
 
-        // slight vertical offset
-        mesh.position.y += 0.01;
+      // slight vertical offset
+      mesh.position.y += 0.01;
 
-        // -----------------
-        // FACING
-        // -----------------
-        if (c.facing) {
-          applyFacing(mesh, c.facing);
+      // =========================
+      // FACING
+      // =========================
+      if (c.facing) {
+        applyFacing(mesh, c.facing);
+      }
+
+      // =========================
+      // ANIMATION PHASES
+      // =========================
+      const phase = c.activity.phase || "loop";
+
+      const interactionTemplate =
+        definitions
+        ?.interaction_templates
+        ?.[anchor.interactionName];
+
+      const animMap =
+        interactionTemplate?.animations || {};
+
+      let clipName = null;
+
+      if (phase === "start") {
+        clipName = chooseVariant(animMap.start);
+      }
+      else if (phase === "loop") {
+        clipName = chooseVariant(animMap.loop);
+      }
+      else if (phase === "stop") {
+        clipName = chooseVariant(animMap.stop);
+      }
+      else if (phase === "interrupt") {
+        clipName = chooseVariant(animMap.interrupted);
+      }
+
+      // =========================
+      // CHARACTER ANIMATION
+      // =========================
+      if (clipName) {
+
+        const lower = clipName.toLowerCase();
+
+        // full-body interactions
+        if (
+          [
+            "sit",
+            "sleep",
+            "lie_down",
+            "wake_up"
+          ].includes(lower)
+        ) {
+
+          playBaseAnimation(id, lower);
         }
 
-        // -----------------
-        // ANIMATION PHASES
-        // -----------------
-        const phase = c.activity.phase || "loop";
+        // upper-body overlays
+        else {
 
-        const interactionTemplate =
-          definitions
-          ?.interaction_templates
-          ?.[anchor.interactionName];
+          hasUpperAnimation = true;
 
-        const animMap =
-          interactionTemplate?.animations || {};
-        let clipName = null;
-
-        if (phase === "start") {
-          clipName = chooseVariant(animMap.start);
+          playUpperAnimation(
+            id,
+            lower
+          );
         }
-        else if (phase === "loop") {
-          clipName = chooseVariant(animMap.loop);
-        }
-        else if (phase === "stop") {
-          clipName = chooseVariant(animMap.stop);
-        }
-        else if (phase === "interrupt") {
-          clipName = chooseVariant(animMap.interrupted);
-        }
+      }
 
-        // -----------------
-        // CHARACTER ANIMATION
-        // -----------------
-        if (clipName) {
-
-          const lower = clipName.toLowerCase();
-
-          // full-body interactions
-          if (
-            [
-              "sit",
-              "sleep",
-              "lie_down",
-              "wake_up"
-            ].includes(lower)
-          ) {
-
-            playBaseAnimation(id, lower);
-          }
-
-          // upper-body overlays
-          else {
-            hasUpperAnimation = true;
-          }
-        }
-  
-        // -----------------
-        // PROP ANIMATION
-        // -----------------
-      
-       // only trigger if phase changed
-      const interactionId = c.activity.interaction_id;
+      // =========================
+      // PROP ANIMATION
+      // =========================
+      const interactionId =
+        c.activity.interaction_id;
 
       if(interactionId){
 
-        const stateKey = `${interactionId}_${phase}`;
+        const stateKey =
+          `${interactionId}_${phase}`;
 
-        const previous =interactionStates[
-        interactionId
-      ];
+        const previous =
+          interactionStates[
+            interactionId
+          ];
 
-      // only trigger ONCE
-      if(previous !== stateKey){
+        // trigger once per phase
+        if(previous !== stateKey){
 
-        // -------------------------
-        // PROP ANIMATION
-        // -------------------------
-        playPropAnimation(
-          prop,
-          interactionTemplate,
-          phase
-        );
+          playPropAnimation(
+            prop,
+            interactionTemplate,
+            phase
+          );
 
-        interactionStates[
-          interactionId
-        ] = stateKey;
+          interactionStates[
+            interactionId
+          ] = stateKey;
+        }
       }
+
+      // ==================================================
+      // 🔥 PROCEDURAL IK (NEW)
+      // ==================================================
+      const controller =
+        characterControllers[id];
+
+      if(controller){
+
+        // -------------------------
+        // RIGHT HAND
+        // -------------------------
+        const rightHandTarget =
+          anchor.ikTargets?.[
+            "ik_righthand"
+          ];
+
+        if(rightHandTarget){
+
+          alignBoneToTarget(
+            controller,
+            "ik_righthand",
+            rightHandTarget,
+            0.15
+          );
+        }
+
+        // -------------------------
+        // LEFT HAND
+        // -------------------------
+        const leftHandTarget =
+          anchor.ikTargets?.[
+            "ik_lefthand"
+          ];
+
+        if(leftHandTarget){
+
+          alignBoneToTarget(
+            controller,
+            "ik_lefthand",
+            leftHandTarget,
+            0.15
+          );
+        }
+
+        // -------------------------
+        // HEAD LOOK
+        // -------------------------
+        const lookTarget =
+          anchor.ikTargets?.[
+            "ik_lookat"
+          ];
+
+        if(lookTarget){
+
+          lookBoneAtTarget(
+            controller,
+            "ik_head",
+            lookTarget,
+            0.08
+          );
+        }
+
+        // -------------------------
+        // FOOT IK
+        // -------------------------
+        const footL =
+          anchor.ikTargets?.[
+            "ik_foot_l"
+          ];
+
+        const footR =
+          anchor.ikTargets?.[
+            "ik_foot_r"
+          ];
+
+        if(footL){
+
+          alignBoneToTarget(
+            controller,
+            "ik_leftfoot",
+            footL,
+            0.1
+          );
+        }
+
+        if(footR){
+
+          alignBoneToTarget(
+            controller,
+            "ik_rightfoot",
+            footR,
+            0.1
+          );
+        }
       }
     }
   }
+}
 
+  // =========================
+  // CLEAR UPPER LAYER
+  // =========================
+  if(!hasUpperAnimation){
+    clearUpperAnimation(id);
+  }
   // =========================
   // SECONDARY ACTIVITY
   // =========================
