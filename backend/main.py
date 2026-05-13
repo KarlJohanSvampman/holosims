@@ -11,6 +11,10 @@ from systems.economy import household_economy
 from llm.llm_client import call_llm,call_llm_safe
 from api.view import router as view_router
 from fastapi.staticfiles import StaticFiles
+from api.assets import router as assets_router
+from api.editor import router as editor_router
+
+
 
 app = FastAPI(title="Simsland")
 app.add_middleware(
@@ -25,10 +29,14 @@ app.add_middleware(
 app.mount("/resources", StaticFiles(directory="/resources"), name="resources")
 clients = []
 app.include_router(view_router)
-
+app.include_router(assets_router, prefix="/api")
 SIM_ID = "default"
 
 frontend_dir = Path(__file__).parent / "frontend"
+app.include_router(
+    editor_router,
+    prefix="/api/editor"
+)
 if frontend_dir.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 

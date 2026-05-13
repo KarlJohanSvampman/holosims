@@ -1,578 +1,674 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Simulation Manager</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Simulation Manager</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<style>
 
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #1e1f22;
-      color: #e8e8e8;
-      display: flex;
-      height: 100vh;
-      overflow: hidden;
-    }
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  background: #1b1f24;
+  color: white;
+  display: flex;
+  height: 100vh;
+}
 
-    #sidebar {
-      width: 280px;
-      background: #2a2c31;
-      border-right: 1px solid #444;
-      display: flex;
-      flex-direction: column;
-    }
+#sidebar {
+  width: 360px;
+  background: #252b33;
+  overflow-y: auto;
+  border-right: 1px solid #444;
+  display: flex;
+  flex-direction: column;
+}
 
-    #sidebar h2 {
-      margin: 0;
-      padding: 16px;
-      border-bottom: 1px solid #444;
-      font-size: 18px;
-    }
+#tabs {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #444;
+}
 
-    #tabs {
-      display: flex;
-      flex-direction: column;
-      padding: 8px;
-      gap: 6px;
-    }
+.tab {
+  padding: 10px;
+  cursor: pointer;
+  background: #2e3640;
+  border-right: 1px solid #444;
+}
 
-    .tab {
-      background: #383b42;
-      border: none;
-      color: white;
-      padding: 12px;
-      text-align: left;
-      cursor: pointer;
-      border-radius: 6px;
-    }
+.tab.active {
+  background: #3d4754;
+}
 
-    .tab.active {
-      background: #4f8cff;
-    }
+#templateList {
+  padding: 10px;
+  border-bottom: 1px solid #444;
+}
 
-    #templateList {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
-    }
+.templateRow {
+  padding: 8px;
+  margin-bottom: 4px;
+  background: #333;
+  cursor: pointer;
+}
 
-    .template-item {
-      padding: 10px;
-      margin-bottom: 6px;
-      background: #383b42;
-      border-radius: 6px;
-      cursor: pointer;
-    }
+.templateRow:hover {
+  background: #444;
+}
 
-    .template-item.active {
-      background: #4f8cff;
-    }
+#editorPanel {
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+}
 
-    #main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-    }
+#jsonEditor {
+  width: 100%;
+  height: 400px;
+  background: #111;
+  color: #00ff99;
+  border: none;
+  padding: 10px;
+  font-family: monospace;
+}
 
-    #toolbar {
-      height: 60px;
-      border-bottom: 1px solid #444;
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      gap: 10px;
-      background: #2a2c31;
-    }
+button {
+  margin: 4px;
+  padding: 8px 12px;
+  background: #3d4754;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
 
-    button {
-      background: #4f8cff;
-      color: white;
-      border: none;
-      padding: 10px 14px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
+button:hover {
+  background: #556170;
+}
 
-    button.danger {
-      background: #c94848;
-    }
+#previewPanel {
+  width: 420px;
+  background: #20242a;
+  border-left: 1px solid #444;
+  display: flex;
+  flex-direction: column;
+}
 
-    input {
-      background: #333;
-      border: 1px solid #555;
-      color: white;
-      padding: 8px;
-      border-radius: 4px;
-    }
+#modelPreview {
+  height: 420px;
+  border-bottom: 1px solid #444;
+}
 
-    #editor {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-    }
+#animationList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
 
-    #jsonEditor {
-      flex: 1;
-      background: #111;
-      color: #00ff90;
-      border: none;
-      padding: 16px;
-      font-family: monospace;
-      font-size: 14px;
-      resize: none;
-      outline: none;
-    }
+.animButton {
+  display: block;
+  width: 100%;
+  margin-bottom: 4px;
+}
 
-    #preview {
-      width: 420px;
-      border-left: 1px solid #444;
-      background: #232428;
-      overflow-y: auto;
-      padding: 16px;
-    }
+#assetBrowser {
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid #444;
+  padding: 10px;
+}
 
-    .preview-card {
-      background: #2f3137;
-      border-radius: 8px;
-      padding: 14px;
-      margin-bottom: 12px;
-    }
+.assetRow {
+  padding: 6px;
+  background: #2c323a;
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
 
-    .preview-title {
-      font-size: 18px;
-      margin-bottom: 8px;
-      color: #4f8cff;
-    }
+.assetRow:hover {
+  background: #3d4754;
+}
 
-    .field {
-      margin-bottom: 6px;
-      font-size: 14px;
-    }
+#statusBar {
+  padding: 8px;
+  background: #16191d;
+  border-top: 1px solid #444;
+  font-size: 12px;
+}
 
-    .field span {
-      color: #999;
-    }
+</style>
 
-    #status {
-      padding: 10px 16px;
-      border-top: 1px solid #444;
-      background: #2a2c31;
-      color: #8dd18d;
-    }
-  </style>
 </head>
 <body>
 
-  <div id="sidebar">
+<div id="sidebar">
 
-    <h2>Simulation Manager</h2>
+  <div id="tabs"></div>
 
-    <div id="tabs">
-      <button class="tab active" data-type="prop_templates">Props</button>
-      <button class="tab" data-type="item_templates">Items</button>
-      <button class="tab" data-type="character_templates">Characters</button>
-      <button class="tab" data-type="interaction_templates">Interactions</button>
-      <button class="tab" data-type="activity_templates">Activities</button>
-      <button class="tab" data-type="tile_templates">Tiles</button>
-    </div>
-
-    <div id="templateList"></div>
-
+  <div style="padding:10px;">
+    <button onclick="createTemplate()">New</button>
+    <button onclick="duplicateTemplate()">Duplicate</button>
+    <button onclick="deleteTemplate()">Delete</button>
+    <button onclick="saveDefinitions()">Save</button>
   </div>
 
-  <div id="main">
+  <div id="templateList"></div>
 
-    <div id="toolbar">
+</div>
 
-      <input id="newTemplateName" placeholder="new_template_id" />
+<div id="editorPanel">
 
-      <button id="createBtn">Create</button>
+  <h2 id="editorTitle">Template Editor</h2>
 
-      <button id="saveBtn">Save World</button>
+  <textarea id="jsonEditor"></textarea>
 
-      <button id="duplicateBtn">Duplicate</button>
+</div>
 
-      <button id="deleteBtn" class="danger">Delete</button>
+<div id="previewPanel">
 
-    </div>
+  <div id="modelPreview"></div>
 
-    <div id="editor">
+  <div id="animationList"></div>
 
-      <textarea id="jsonEditor"></textarea>
+  <div id="assetBrowser"></div>
 
-      <div id="preview"></div>
-
-    </div>
-
-    <div id="status">
-      Ready.
-    </div>
-
+  <div id="statusBar">
+    Ready
   </div>
 
-<script>
+</div>
 
-let world = null;
-let currentCategory = "prop_templates";
+<script type="module">
+
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+// =====================================================
+// STATE
+// =====================================================
+
+let definitions = {
+  prop_templates: {},
+  item_templates: {},
+  character_templates: {},
+  interaction_templates: {},
+  activity_templates: {},
+  tile_templates: {}
+};
+
+let assets = {
+  props: [],
+  characters: [],
+  items: []
+};
+
+const tabs = [
+  'prop_templates',
+  'item_templates',
+  'character_templates',
+  'interaction_templates',
+  'activity_templates',
+  'tile_templates'
+];
+
+let currentTab = 'prop_templates';
 let currentTemplateId = null;
 
-const listEl = document.getElementById("templateList");
-const editorEl = document.getElementById("jsonEditor");
-const previewEl = document.getElementById("preview");
-const statusEl = document.getElementById("status");
+// =====================================================
+// UI ELEMENTS
+// =====================================================
+
+const tabsEl = document.getElementById('tabs');
+const templateListEl = document.getElementById('templateList');
+const jsonEditor = document.getElementById('jsonEditor');
+const editorTitle = document.getElementById('editorTitle');
+const assetBrowser = document.getElementById('assetBrowser');
+const animationList = document.getElementById('animationList');
+const statusBar = document.getElementById('statusBar');
 
 // =====================================================
-// LOAD WORLD
+// THREE PREVIEW
 // =====================================================
-async function loadWorld(){
 
-  const res = await fetch(
-    "/api/editor/world?sim_id=default"
-  );
+const previewScene = new THREE.Scene();
+previewScene.background = new THREE.Color(0x20242a);
 
-  world = await res.json();
+const previewCamera = new THREE.PerspectiveCamera(
+  60,
+  1,
+  0.1,
+  1000
+);
 
-  ensureDefinitions();
+previewCamera.position.set(2,2,2);
+previewCamera.lookAt(0,0,0);
 
+const previewRenderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+previewRenderer.setSize(420,420);
+
+document
+  .getElementById('modelPreview')
+  .appendChild(previewRenderer.domElement);
+
+previewScene.add(
+  new THREE.AmbientLight(0xffffff,1.2)
+);
+
+const dir = new THREE.DirectionalLight(
+  0xffffff,
+  2
+);
+
+dir.position.set(5,10,5);
+previewScene.add(dir);
+
+previewScene.add(
+  new THREE.GridHelper(10,10)
+);
+
+const previewLoader = new GLTFLoader();
+
+let previewModel = null;
+let previewMixer = null;
+
+// =====================================================
+// LOAD DEFINITIONS
+// =====================================================
+
+async function loadDefinitions(){
+
+  try {
+
+    const res = await fetch(
+      '/api/editor/definitions?sim_id=default'
+    );
+
+    definitions = await res.json();
+
+  } catch(err){
+
+    console.warn(err);
+  }
+
+  renderTabs();
   renderTemplateList();
 }
 
 // =====================================================
-// ENSURE DEFINITIONS
+// LOAD ASSETS
 // =====================================================
-function ensureDefinitions(){
 
-  world.definitions ||= {};
+async function loadAssets(){
 
-  const defs = world.definitions;
+  try {
 
-  defs.prop_templates ||= {};
-  defs.item_templates ||= {};
-  defs.character_templates ||= {};
-  defs.interaction_templates ||= {};
-  defs.activity_templates ||= {};
-  defs.tile_templates ||= {};
-}
+    const res = await fetch('/api/assets');
 
-// =====================================================
-// TEMPLATE ACCESSOR
-// =====================================================
-function getTemplates(){
+    assets = await res.json();
 
-  return world
-    .definitions
-    [currentCategory];
-}
+  } catch(err){
 
-// =====================================================
-// RENDER TEMPLATE LIST
-// =====================================================
-function renderTemplateList(){
-
-  listEl.innerHTML = "";
-
-  const templates = getTemplates();
-
-  Object.keys(templates)
-    .sort()
-    .forEach((id)=>{
-
-      const div = document.createElement("div");
-
-      div.className = "template-item";
-
-      if(id === currentTemplateId){
-        div.classList.add("active");
-      }
-
-      div.textContent = id;
-
-      div.onclick = ()=>{
-
-        currentTemplateId = id;
-
-        renderTemplateList();
-        renderEditor();
-      };
-
-      listEl.appendChild(div);
-    });
-}
-
-// =====================================================
-// RENDER EDITOR
-// =====================================================
-function renderEditor(){
-
-  if(!currentTemplateId){
-
-    editorEl.value = "";
-    previewEl.innerHTML = "";
-
-    return;
+    console.warn(err);
   }
 
-  const template = getTemplates()[currentTemplateId];
+  renderAssets();
+}
 
-  editorEl.value = JSON.stringify(
-    template,
+// =====================================================
+// TABS
+// =====================================================
+
+function renderTabs(){
+
+  tabsEl.innerHTML = '';
+
+  tabs.forEach(tab=>{
+
+    const el = document.createElement('div');
+
+    el.className = 'tab';
+
+    if(tab === currentTab){
+      el.classList.add('active');
+    }
+
+    el.textContent = tab;
+
+    el.onclick = ()=>{
+
+      currentTab = tab;
+      currentTemplateId = null;
+
+      renderTabs();
+      renderTemplateList();
+    };
+
+    tabsEl.appendChild(el);
+  });
+}
+
+// =====================================================
+// TEMPLATE LIST
+// =====================================================
+
+function renderTemplateList(){
+
+  templateListEl.innerHTML = '';
+
+  const bucket = definitions[currentTab] || {};
+
+  Object.entries(bucket).forEach(([id,data])=>{
+
+    const row = document.createElement('div');
+
+    row.className = 'templateRow';
+
+    row.textContent = id;
+
+    row.onclick = ()=>{
+      openTemplate(id);
+    };
+
+    templateListEl.appendChild(row);
+  });
+}
+
+// =====================================================
+// OPEN TEMPLATE
+// =====================================================
+
+function openTemplate(id){
+
+  currentTemplateId = id;
+
+  const data = definitions[currentTab][id];
+
+  jsonEditor.value = JSON.stringify(
+    data,
     null,
     2
   );
 
-  renderPreview(template);
-}
+  editorTitle.textContent = id;
 
-// =====================================================
-// PREVIEW PANEL
-// =====================================================
-function renderPreview(template){
+  const model = data.model;
 
-  previewEl.innerHTML = "";
-
-  const card = document.createElement("div");
-  card.className = "preview-card";
-
-  const title = document.createElement("div");
-  title.className = "preview-title";
-  title.textContent = currentTemplateId;
-
-  card.appendChild(title);
-
-  Object.entries(template).forEach(([k,v])=>{
-
-    const row = document.createElement("div");
-    row.className = "field";
-
-    row.innerHTML = `
-      <span>${k}:</span>
-      ${typeof v === 'object'
-        ? JSON.stringify(v)
-        : v}
-    `;
-
-    card.appendChild(row);
-  });
-
-  previewEl.appendChild(card);
-}
-
-// =====================================================
-// SAVE TEMPLATE CHANGES
-// =====================================================
-editorEl.addEventListener("input", ()=>{
-
-  if(!currentTemplateId) return;
-
-  try {
-
-    const parsed = JSON.parse(
-      editorEl.value
-    );
-
-    getTemplates()[currentTemplateId] = parsed;
-
-    renderPreview(parsed);
-
-    statusEl.textContent = "Template updated.";
-    statusEl.style.color = "#8dd18d";
-
+  if(model){
+    loadPreviewModel(model);
   }
-  catch(err){
-
-    statusEl.textContent = err.message;
-    statusEl.style.color = "#ff8080";
-  }
-});
+}
 
 // =====================================================
 // CREATE TEMPLATE
 // =====================================================
-document
-  .getElementById("createBtn")
-  .onclick = ()=>{
 
-  const id =
-    document
-    .getElementById("newTemplateName")
-    .value
-    .trim();
+window.createTemplate = function(){
+
+  const id = prompt('Template ID');
 
   if(!id) return;
 
-  const templates = getTemplates();
-
-  if(templates[id]){
-
-    alert("Template already exists.");
-    return;
-  }
-
-  templates[id] = getDefaultTemplate();
-
-  currentTemplateId = id;
+  definitions[currentTab][id] = {};
 
   renderTemplateList();
-  renderEditor();
-};
-
-// =====================================================
-// DUPLICATE TEMPLATE
-// =====================================================
-document
-  .getElementById("duplicateBtn")
-  .onclick = ()=>{
-
-  if(!currentTemplateId) return;
-
-  const templates = getTemplates();
-
-  const copyId =
-    currentTemplateId + "_copy";
-
-  templates[copyId] = structuredClone(
-    templates[currentTemplateId]
-  );
-
-  currentTemplateId = copyId;
-
-  renderTemplateList();
-  renderEditor();
-};
-
-// =====================================================
-// DELETE TEMPLATE
-// =====================================================
-document
-  .getElementById("deleteBtn")
-  .onclick = ()=>{
-
-  if(!currentTemplateId) return;
-
-  if(!confirm("Delete template?")){
-    return;
-  }
-
-  delete getTemplates()[currentTemplateId];
-
-  currentTemplateId = null;
-
-  renderTemplateList();
-  renderEditor();
-};
-
-// =====================================================
-// SAVE WORLD
-// =====================================================
-document
-  .getElementById("saveBtn")
-  .onclick = async ()=>{
-
-  await fetch(
-    "/api/editor/world?sim_id=default",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(world)
-    }
-  );
-
-  statusEl.textContent = "World saved.";
-  statusEl.style.color = "#8dd18d";
-};
-
-// =====================================================
-// DEFAULT TEMPLATES
-// =====================================================
-function getDefaultTemplate(){
-
-  switch(currentCategory){
-
-    case "prop_templates":
-      return {
-        category: "furniture",
-        model: "/resources/props/example.glb",
-        footprint: [
-          {dx:0,dy:0}
-        ],
-        interactions: []
-      };
-
-    case "item_templates":
-      return {
-        category: "item",
-        model: "/resources/items/example.glb",
-        stackable: false,
-        wearable: false,
-        usable_for: []
-      };
-
-    case "character_templates":
-      return {
-        model: "/resources/characters/base.glb",
-        walk_style: "default"
-      };
-
-    case "interaction_templates":
-      return {
-        animations: {
-          start: [],
-          loop: [],
-          stop: []
-        }
-      };
-
-    case "activity_templates":
-      return {
-        required_items: [],
-        interactions: []
-      };
-
-    case "tile_templates":
-      return {
-        walkable: true,
-        texture: ""
-      };
-  }
-
-  return {};
 }
 
 // =====================================================
-// TAB SWITCHING
+// DUPLICATE
 // =====================================================
-document
-  .querySelectorAll(".tab")
-  .forEach((btn)=>{
 
-    btn.onclick = ()=>{
+window.duplicateTemplate = function(){
 
-      document
-        .querySelectorAll(".tab")
-        .forEach(t=>t.classList.remove("active"));
+  if(!currentTemplateId) return;
 
-      btn.classList.add("active");
+  const id = prompt('Duplicate as');
 
-      currentCategory = btn.dataset.type;
+  if(!id) return;
 
-      currentTemplateId = null;
+  definitions[currentTab][id] = JSON.parse(
+    JSON.stringify(
+      definitions[currentTab][currentTemplateId]
+    )
+  );
 
-      renderTemplateList();
-      renderEditor();
-    };
-});
+  renderTemplateList();
+}
 
-loadWorld();
+// =====================================================
+// DELETE
+// =====================================================
+
+window.deleteTemplate = function(){
+
+  if(!currentTemplateId) return;
+
+  delete definitions[currentTab][currentTemplateId];
+
+  currentTemplateId = null;
+
+  jsonEditor.value = '';
+
+  renderTemplateList();
+}
+
+// =====================================================
+// SAVE
+// =====================================================
+
+window.saveDefinitions = async function(){
+
+  try {
+
+    if(currentTemplateId){
+
+      definitions[currentTab][currentTemplateId] =
+        JSON.parse(jsonEditor.value);
+    }
+
+    await fetch(
+      '/api/editor/definitions?sim_id=default',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(definitions)
+      }
+    );
+
+    setStatus('Saved');
+
+  } catch(err){
+
+    console.error(err);
+
+    setStatus('Save failed');
+  }
+}
+
+// =====================================================
+// ASSET BROWSER
+// =====================================================
+
+function renderAssets(){
+
+  assetBrowser.innerHTML = '';
+
+  Object.entries(assets).forEach(([type,list])=>{
+
+    const title = document.createElement('h4');
+    title.textContent = type;
+
+    assetBrowser.appendChild(title);
+
+    list.forEach(path=>{
+
+      const row = document.createElement('div');
+
+      row.className = 'assetRow';
+      row.textContent = path;
+
+      row.onclick = ()=>{
+
+        loadPreviewModel(path);
+
+        insertModelIntoEditor(path);
+      };
+
+      assetBrowser.appendChild(row);
+    });
+  });
+}
+
+// =====================================================
+// INSERT MODEL PATH
+// =====================================================
+
+function insertModelIntoEditor(path){
+
+  try {
+
+    const data = JSON.parse(jsonEditor.value || '{}');
+
+    data.model = path;
+
+    jsonEditor.value = JSON.stringify(
+      data,
+      null,
+      2
+    );
+
+  } catch(err){
+
+    console.warn(err);
+  }
+}
+
+// =====================================================
+// PREVIEW MODEL
+// =====================================================
+
+function loadPreviewModel(path){
+
+  if(previewModel){
+    previewScene.remove(previewModel);
+  }
+
+  animationList.innerHTML = '';
+
+  previewLoader.load(path,(gltf)=>{
+
+    previewModel = gltf.scene;
+
+    previewScene.add(previewModel);
+
+    previewMixer = new THREE.AnimationMixer(
+      previewModel
+    );
+
+    // animations
+    gltf.animations.forEach((clip)=>{
+
+      const btn = document.createElement('button');
+
+      btn.className = 'animButton';
+
+      btn.textContent = clip.name;
+
+      btn.onclick = ()=>{
+
+        previewMixer.stopAllAction();
+
+        const action = previewMixer.clipAction(clip);
+
+        action.reset();
+        action.fadeIn(0.2);
+        action.play();
+      };
+
+      animationList.appendChild(btn);
+    });
+
+    // anchors
+    previewModel.traverse((o)=>{
+
+      if(
+        o.name
+        .toLowerCase()
+        .startsWith('anchor_')
+      ){
+
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(0.05),
+          new THREE.MeshBasicMaterial({
+            color: 0xff0000
+          })
+        );
+
+        o.add(sphere);
+      }
+    });
+
+    setStatus(`Loaded ${path}`);
+
+  },undefined,(err)=>{
+
+    console.error(err);
+
+    setStatus('Model load failed');
+  });
+}
+
+// =====================================================
+// STATUS
+// =====================================================
+
+function setStatus(text){
+  statusBar.textContent = text;
+}
+
+// =====================================================
+// ANIMATE
+// =====================================================
+
+const previewClock = new THREE.Clock();
+
+function animate(){
+
+  requestAnimationFrame(animate);
+
+  const delta = previewClock.getDelta();
+
+  if(previewMixer){
+    previewMixer.update(delta);
+  }
+
+  if(previewModel){
+    previewModel.rotation.y += 0.003;
+  }
+
+  previewRenderer.render(
+    previewScene,
+    previewCamera
+  );
+}
+
+animate();
+
+// =====================================================
+// STARTUP
+// =====================================================
+
+loadDefinitions();
+loadAssets();
 
 </script>
 
-</body>
-</html>
+</bod
