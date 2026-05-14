@@ -12,6 +12,9 @@ from brain.goals import select_goal
 from brain.planner import generate_plan
 from brain.decision_engine import decide_action
 from brain.executor import execute
+from systems.props import get_prop_category
+from db import update_world_tick
+
 
 MAX_BATCH = 10
 MAX_CONCURRENCY = 5
@@ -36,7 +39,10 @@ async def process_agent(c, world):
     query = f"""
     emotion:{c.get('emotion')}
     goal:{c.get('goal')}
-    nearby:{[p['type'] for p in perception.get('props', [])]}
+    nearby:{[
+    get_prop_category(world, p)
+    for p in perception.get("props", [])
+]}
     """
 
     # 🔥 RELEVANT MEMORY

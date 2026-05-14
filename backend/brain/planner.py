@@ -1,6 +1,10 @@
 import json
 from llm.llm_client import call_llm, call_llm_safe
 from systems.props import find_nearest_anchor
+from systems.phone import check_phone
+from systems.navgrid import neighbors
+from fastapi import APIRouter, Request
+from db import load_world, save_world, update_world_tick
 from systems.navgrid import build_blocked_set, is_walkable
 from brain.intention import choose_intention
 OFFGRID_GOALS = {
@@ -11,7 +15,7 @@ OFFGRID_GOALS = {
 }
 
 
-    
+
 def get_best_approach_tile(c, anchor, world):
     blocked = build_blocked_set(world)
 
@@ -138,26 +142,25 @@ def fallback_plan(c, goal, world):
 # =========================
 # 🧠 LLM PLAN GENERATION
 # =========================
-async def llm_plan(c, goal):
+async def llm_plan(c, goal, world):
 
     prompt = f"""
-You are {c.get("name")}.
+    You are {c.get("name")}.
 
-Goal:
-{goal}
+    Goal:
+    {goal}
 
-State:
-Needs: {c.get("needs")}
-Emotion: {c.get("emotion")}
+    State:
+    Needs: {c.get("needs")}
+    Emotion: {c.get("emotion")}
 
-Generate a short plan.
+    Generate a short plan.
 
-Respond ONLY in JSON:
-{{
-  "goal": "{goal}",
-  "steps": ["step1", "step2"]
-}}
-"""
+    Respond ONLY in JSON:
+    {{
+    "goal": "{goal}",
+    "steps": ["step1", "step2"]
+    }}"""
 
     try:
         result = await call_llm([{"role": "user", "content": prompt}])
@@ -170,13 +173,11 @@ Respond ONLY in JSON:
         parsed = json.loads(text)
 
         if "steps" not in parsed:
-            return fallback_plan(c, goal, {})
-
+            return fallback_plan(c, goal, world)
         return parsed
 
     except Exception:
-        return fallback_plan(c, goal, {})
-
+        return fallback_plan(c, goal, world)
 
 # =========================
 # 🚍 BUS HELPERS
@@ -270,7 +271,7 @@ async def generate_plan(c, goal, world):
 
 
     if use_llm:
-        plan = await llm_plan(c, goal)
+        plan = await llm_plan(c, goal, world)
     else:
         plan = fallback_plan(c, goal, world)
 

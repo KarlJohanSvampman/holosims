@@ -2,6 +2,53 @@ import time
 from brain.relationships import apply_interaction
 from systems.messaging import queue_message
 
+# ============================================
+# PHONE INTERRUPTION CHECK
+# ============================================
+def check_phone(c, world):
+
+    # -----------------------------
+    # ACTIVE RINGING
+    # -----------------------------
+    incoming = c.get("incoming_call")
+
+    if incoming:
+
+        return {
+            "name": "answer_call",
+            "caller": incoming
+        }
+
+    # -----------------------------
+    # UNREAD SMS
+    # -----------------------------
+    unread = c.get("unread_sms", [])
+
+    if unread:
+
+        latest = unread[-1]
+
+        return {
+            "name": "reply_sms",
+            "target": latest.get("from"),
+            "text": "Ok"
+        }
+
+    # -----------------------------
+    # MISSED CALLS
+    # -----------------------------
+    missed = c.get("missed_calls", [])
+
+    if missed:
+
+        target = missed[-1]
+
+        return {
+            "name": "call",
+            "target": target
+        }
+
+    return None
 
 def can_call(c, other):
 

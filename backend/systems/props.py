@@ -273,3 +273,44 @@ def remove_item_from_prop(
             return inv.pop(i)
 
     return None
+
+    # ============================================
+# FIND NEAREST INTERACTION ANCHOR
+# ============================================
+def find_nearest_anchor(
+    c,
+    world,
+    interaction_name
+):
+
+    best_prop = None
+    best_anchor = None
+    best_dist = 999999
+
+    for prop in world.get("props", []):
+
+        for anchor in prop.get("anchors", []):
+
+            if (
+                anchor.get("interactionName")
+                != interaction_name
+            ):
+                continue
+
+            dist = (
+                abs(anchor["x"] - c["x"])
+                + abs(anchor["y"] - c["y"])
+            )
+
+            if dist < best_dist:
+
+                best_dist = dist
+
+                best_prop = prop
+                best_anchor = anchor
+
+    if not best_prop:
+        return None
+
+    return best_prop, best_anchor
+    

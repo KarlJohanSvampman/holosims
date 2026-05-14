@@ -1,18 +1,36 @@
 import math
 
+from systems.templates import get_prop_template
+
 
 # =========================
-# 🧱 FOOTPRINT → WORLD TILES
+# GRID NEIGHBORS
 # =========================
-def get_prop_tiles(prop):
+def neighbors(x, y):
+
+    return [
+        (x + 1, y),
+        (x - 1, y),
+        (x, y + 1),
+        (x, y - 1)
+    ]
+
+
+# =========================
+# FOOTPRINT → WORLD TILES
+# =========================
+def get_prop_tiles(world, prop):
 
     tiles = []
 
     template = get_prop_template(world, prop)
 
+    if not template:
+        return [(prop["x"], prop["y"])]
+
     footprint = template.get(
         "footprint",
-        [{"dx":0,"dy":0}]
+        [{"dx": 0, "dy": 0}]
     )
 
     rot = prop.get("rotation", 0)
@@ -37,7 +55,7 @@ def get_prop_tiles(prop):
 
 
 # =========================
-# 🎯 ANCHOR CHECK
+# ANCHOR CHECK
 # =========================
 def is_anchor_tile(x, y, world):
 
@@ -52,18 +70,18 @@ def is_anchor_tile(x, y, world):
 
 
 # =========================
-# 🚧 BLOCKED SET
+# BLOCKED SET
 # =========================
 def build_blocked_set(world):
 
     blocked = set()
 
     # -----------------
-    # PROPS (multi-tile)
+    # PROPS
     # -----------------
     for p in world.get("props", []):
 
-        for (px, py) in get_prop_tiles(p):
+        for (px, py) in get_prop_tiles(world, p):
             blocked.add((px, py))
 
     # -----------------
@@ -89,7 +107,6 @@ def build_blocked_set(world):
         prop_id = act.get("prop_id")
         phase = act.get("phase")
 
-        # temporarily block during transitions
         if phase in ["start", "stop"]:
 
             prop = next(
@@ -103,18 +120,18 @@ def build_blocked_set(world):
             if not prop:
                 continue
 
-            for (px, py) in get_prop_tiles(prop):
+            for (px, py) in get_prop_tiles(world, prop):
                 blocked.add((px, py))
 
     return blocked
 
 
 # =========================
-# 🚶 WALKABILITY
+# WALKABILITY
 # =========================
 def is_walkable(x, y, world, blocked):
 
-    # allow stepping onto anchors
+    # allow anchors
     if is_anchor_tile(x, y, world):
         return True
 
