@@ -94,21 +94,44 @@ def save_character_safe(c, sim_id="default"):
 
 def load_character(cid, sim_id="default"):
 
-    # 🔥 cache first
-    cached = get_char_cache(sim_id, cid)
-    if cached:
-        return cached
+    conn = get_db()
+    cur = conn.cursor()
 
-    # DB fallback
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT data FROM characters
-            WHERE id=%s AND simulation_id=%s
-        """, (cid, sim_id))
+    try:
+
+        cur.execute(
+            """
+            SELECT data
+            FROM characters
+            WHERE id=%s
+            AND simulation_id=%s
+            """,
+            (cid, sim_id)
+        )
+
         row = cur.fetchone()
-        c = row[0] if row else None
 
-    if c:
-        set_char_cache(sim_id, cid, c)
+        conn.commit()
 
-    return c
+        if not row:
+            return None
+
+        return row[0]
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        cur.close()
+
+def update_world_tick(sim_id, tick):
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE world
+                SET data = jsonb_set(data, '{tick}', to_jsonb(%s::int))
+                WHERE simulation_id=%s
+            """, (tick, sim_id))

@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from core.redis_queue import enqueue
-from db import load_world, save_world, init_db, conn
+from db import load_world, save_world, init_db, conn, update_world_tick
 from sim_loop import tick
 from systems.economy import household_economy
 from llm.llm_client import call_llm,call_llm_safe
@@ -13,7 +13,7 @@ from api.view import router as view_router
 from fastapi.staticfiles import StaticFiles
 from api.assets import router as assets_router
 from api.editor import router as editor_router
-
+from api.editor import load_definitions, save_definitions
 
 
 app = FastAPI(title="Simsland")
@@ -41,46 +41,58 @@ if frontend_dir.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 
 
-# 🚀 MAIN LOOP (DB-backed producer)
 async def loop():
+
     while True:
+
         world = load_world(SIM_ID)
+
+        world["definitions"] = load_definitions(
+            SIM_ID
+        )
 
         world["tick"] += 1
 
-        update_world_tick(SIM_ID, world["tick"])
+        update_world_tick(
+            SIM_ID,
+            world["tick"]
+        )
 
-        # enqueue jobs for workers
-        for c in list(world.get("characters", {}).values()):
+        for c in list(
+            world.get("characters", {}).values()
+        ):
+
             enqueue({
                 "type": "agent_tick",
                 "simulation_id": SIM_ID,
                 "character_id": c["id"]
             })
 
-
-        # broadcast updated world to clients
         dead = []
+
         for ws in clients:
+
             try:
                 await ws.send_json(world)
+
             except Exception:
                 dead.append(ws)
 
         for ws in dead:
+
             if ws in clients:
                 clients.remove(ws)
 
-        await asyncio.sleep(float(os.getenv("TICK_RATE_SECONDS", "1.0")))
+        await asyncio.sleep(
+            float(
+                os.getenv(
+                    "TICK_RATE_SECONDS",
+                    "1.0"
+                )
+            )
+        )
 
-def update_world_tick(sim_id, tick):
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE world
-                SET data = jsonb_set(data, '{tick}', to_jsonb(%s::int))
-                WHERE simulation_id=%s
-            """, (tick, sim_id))
+
 
 @app.on_event("startup")
 async def startup():
