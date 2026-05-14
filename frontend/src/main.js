@@ -40,8 +40,32 @@ function getPropTemplate(state, prop){
   );
 }
 
+function createFallbackPropMesh(prop){
+
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xff00ff
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+
+  mesh.position.set(
+    prop.x - 10,
+    0.5,
+    prop.y - 7
+  );
+
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  return mesh;
+}
+
+
 function loadProp(state, prop){
 
+  // already loaded/loading
   if(propRegistry[prop.id]) return;
 
   propRegistry[prop.id] = {
@@ -50,96 +74,242 @@ function loadProp(state, prop){
 
   const template = getPropTemplate(state, prop);
 
-  if(!template) return;
+  // -------------------------
+  // MISSING TEMPLATE
+  // -------------------------
+  if(!template){
 
-  loader.load(template.model, (gltf)=>{
-
-    const model = gltf.scene;
-
-    // -------------------------
-    // POSITION
-    // -------------------------
-    model.position.set(
-      prop.x - 10,
-      0,
-      prop.y - 7
+    console.warn(
+      "Missing prop template:",
+      prop.template
     );
 
-    // -------------------------
-    // ROTATION
-    // -------------------------
-    model.rotation.y =
-      prop.rotation || 0;
+    const fallback =
+      createFallbackPropMesh(prop);
 
-    // -------------------------
-    // PROP MIXER
-    // -------------------------
-    const mixer =
-      new THREE.AnimationMixer(model);
+    scene.add(fallback);
 
-    const actions = {};
-
-    gltf.animations.forEach((clip)=>{
-
-      actions[
-        clip.name.toLowerCase()
-      ] = mixer.clipAction(clip);
-    });
-
-    if(lower.startsWith("anchor_")){
-
-  const interactionName =
-    o.userData.interaction;
-
-  // -------------------------
-  // FIND IK TARGETS
-  // -------------------------
-  const ikTargets = {};
-
-  o.traverse((child)=>{
-
-    if(!child.name) return;
-
-    const childLower =
-      child.name.toLowerCase();
-
-    if(childLower.startsWith("ik_")){
-
-      ikTargets[childLower] = child;
-    }
-  });
-
-    anchors.push({
-
-      name: o.name,
-
-      object: o,
-
-      interactionName,
-
-      ikTargets
-    });
-}
-
-    // -------------------------
-    // SAVE REGISTRY
-    // -------------------------
     propRegistry[prop.id] = {
 
       id: prop.id,
 
-      mesh: model,
+      mesh: fallback,
 
-      mixer,
-      actions,
+      mixer: null,
 
-      anchors,
+      actions: {},
 
-      template
+      anchors: [],
+
+      template: null,
+
+      fallback: true
     };
 
-    scene.add(model);
-  });
+    return;
+  }
+
+  // -------------------------
+  // MISSING MODEL PATH
+  // -------------------------
+  if(!template.model){
+
+    console.warn(
+      "Template missing model:",
+      template
+    );
+
+    const fallback =
+      createFallbackPropMesh(prop);
+
+    scene.add(fallback);
+
+    propRegistry[prop.id] = {
+
+      id: prop.id,
+
+      mesh: fallback,
+
+      mixer: null,
+
+      actions: {},
+
+      anchors: [],
+
+      template,
+
+      fallback: true
+    };
+
+    return;
+  }
+
+  // -------------------------
+  // LOAD GLTF
+  // -------------------------
+  loader.load(
+
+    template.model,
+
+    // SUCCESS
+    (gltf)=>{
+
+      const model = gltf.scene;
+
+      // -------------------------
+      // POSITION
+      // -------------------------
+      model.position.set(
+        prop.x - 10,
+        0,
+        prop.y - 7
+      );
+
+      // -------------------------
+      // ROTATION
+      // -------------------------
+      model.rotation.y =
+        prop.rotation || 0;
+
+      // -------------------------
+      // SHADOWS
+      // -------------------------
+      model.traverse((o)=>{
+
+        if(o.isMesh){
+
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+
+      // -------------------------
+      // MIXER
+      // -------------------------
+      const mixer =
+        new THREE.AnimationMixer(model);
+
+      const actions = {};
+
+      gltf.animations.forEach((clip)=>{
+
+        actions[
+          clip.name.toLowerCase()
+        ] = mixer.clipAction(clip);
+      });
+
+      // -------------------------
+      // ANCHORS + IK
+      // -------------------------
+      const anchors = [];
+
+      model.traverse((o)=>{
+
+        if(!o.name) return;
+
+        const lower =
+          o.name.toLowerCase();
+
+        // -------------------------
+        // ANCHOR DETECTION
+        // -------------------------
+        if(lower.startsWith("anchor_")){
+
+          const interactionName =
+            o.userData.interaction
+            || "interact";
+
+          // -------------------------
+          // IK TARGETS
+          // -------------------------
+          const ikTargets = {};
+
+          o.traverse((child)=>{
+
+            if(!child.name) return;
+
+            const childLower =
+              child.name.toLowerCase();
+
+            if(childLower.startsWith("ik_")){
+
+              ikTargets[
+                childLower
+              ] = child;
+            }
+          });
+
+          anchors.push({
+
+            name: o.name,
+
+            object: o,
+
+            interactionName,
+
+            ikTargets
+          });
+        }
+      });
+
+      // -------------------------
+      // REGISTRY
+      // -------------------------
+      propRegistry[prop.id] = {
+
+        id: prop.id,
+
+        mesh: model,
+
+        mixer,
+
+        actions,
+
+        anchors,
+
+        template,
+
+        fallback: false
+      };
+
+      scene.add(model);
+    },
+
+    // PROGRESS
+    undefined,
+
+    // ERROR
+    (err)=>{
+
+      console.error(
+        "Failed to load prop model:",
+        template.model,
+        err
+      );
+
+      const fallback =
+        createFallbackPropMesh(prop);
+
+      scene.add(fallback);
+
+      propRegistry[prop.id] = {
+
+        id: prop.id,
+
+        mesh: fallback,
+
+        mixer: null,
+
+        actions: {},
+
+        anchors: [],
+
+        template,
+
+        fallback: true
+      };
+    }
+  );
 }
 
 function updateProps(state){
@@ -462,56 +632,272 @@ const raycaster=new THREE.Raycaster(); const mouse=new THREE.Vector2();
 
 function worldToScreen(pos){ const v=pos.clone().project(camera); return {x:(v.x*.5+.5)*innerWidth, y:(-v.y*.5+.5)*innerHeight}; }
 function makeDiv(cls){ const d=document.createElement('div'); d.className=cls; document.body.appendChild(d); return d; }
+
+function createFallbackCharacter(character){
+
+  const root = new THREE.Group();
+
+  // -------------------------
+  // BODY
+  // -------------------------
+  const bodyGeo =
+    new THREE.CapsuleGeometry(
+      0.35,
+      1.0,
+      4,
+      8
+    );
+
+  const bodyMat =
+    new THREE.MeshStandardMaterial({
+      color: 0x00ffff
+    });
+
+  const body =
+    new THREE.Mesh(
+      bodyGeo,
+      bodyMat
+    );
+
+  body.position.y = 1;
+
+  body.castShadow = true;
+  body.receiveShadow = true;
+
+  root.add(body);
+
+  // -------------------------
+  // HEAD
+  // -------------------------
+  const headGeo =
+    new THREE.SphereGeometry(
+      0.22,
+      16,
+      16
+    );
+
+  const head =
+    new THREE.Mesh(
+      headGeo,
+      bodyMat
+    );
+
+  head.position.y = 1.9;
+
+  head.castShadow = true;
+
+  root.add(head);
+
+  // -------------------------
+  // POSITION
+  // -------------------------
+  root.position.set(
+    character.x - 10,
+    0,
+    character.y - 7
+  );
+
+  return root;
+}
+
+
 function createSim(id, character){
+
+  // -------------------------
+  // TEMPLATE
+  // -------------------------
   const template =
     definitions
     ?.character_templates
     ?.[character.template];
-    const modelPath = template?.model
-  || '/resources/characters/base.glb';
-  loader.load(modelPath, (gltf)=>{
 
-    const model = gltf.scene;
+  const modelPath =
+    template?.model;
 
-    scene.add(model);
+  // -------------------------
+  // MISSING TEMPLATE/MODEL
+  // -------------------------
+  if(!modelPath){
 
-    const mixer = new THREE.AnimationMixer(model);
-
-    const controller = createAnimationController(
-      model,
-      mixer,
-      gltf.animations
+    console.warn(
+      "Missing character model:",
+      character.template
     );
 
-    const bones = {};
+    const fallback =
+      createFallbackCharacter(character);
 
-    model.traverse((o)=>{
+    scene.add(fallback);
 
-      if(o.isBone){
+    sims[id] = fallback;
+    models[id] = fallback;
 
-        bones[
-          o.name.toLowerCase()
-        ] = o;
-      }
-    });
+    characterControllers[id] = {
+      mixer: null,
+      actions: {},
+      bones: {},
+      fallback: true
+    };
 
-    controller.bones = bones;
-    characterControllers[id] = controller;
+    labels[id] = makeDiv("label");
+    bubbles[id] = makeDiv("bubble");
 
-    models[id] = model;
-    sims[id] = model;
-
-    labels[id] = makeDiv('label');
-    bubbles[id] = makeDiv('bubble');
-
-    bubbles[id].style.display='none';
-
-    playBaseAnimation(id, "idle");
+    bubbles[id].style.display =
+      "none";
 
     delete loadingCharacters[id];
 
-  });
+    return;
+  }
 
+  // -------------------------
+  // LOAD MODEL
+  // -------------------------
+  loader.load(
+
+    modelPath,
+
+    // SUCCESS
+    (gltf)=>{
+
+      const model = gltf.scene;
+
+      // -------------------------
+      // SHADOWS
+      // -------------------------
+      model.traverse((o)=>{
+
+        if(o.isMesh){
+
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+
+      // -------------------------
+      // POSITION
+      // -------------------------
+      model.position.set(
+        character.x - 10,
+        0,
+        character.y - 7
+      );
+
+      scene.add(model);
+
+      // -------------------------
+      // MIXER
+      // -------------------------
+      const mixer =
+        new THREE.AnimationMixer(model);
+
+      // -------------------------
+      // CONTROLLER
+      // -------------------------
+      const controller =
+        createAnimationController(
+          model,
+          mixer,
+          gltf.animations
+        );
+
+      // -------------------------
+      // BONES
+      // -------------------------
+      const bones = {};
+
+      model.traverse((o)=>{
+
+        if(o.isBone){
+
+          bones[
+            o.name.toLowerCase()
+          ] = o;
+        }
+      });
+
+      controller.bones = bones;
+
+      characterControllers[id] =
+        controller;
+
+      // -------------------------
+      // REGISTRY
+      // -------------------------
+      models[id] = model;
+      sims[id] = model;
+
+      // -------------------------
+      // UI
+      // -------------------------
+      labels[id] =
+        makeDiv("label");
+
+      bubbles[id] =
+        makeDiv("bubble");
+
+      bubbles[id].style.display =
+        "none";
+
+      // -------------------------
+      // DEFAULT ANIMATION
+      // -------------------------
+      playBaseAnimation(
+        id,
+        "idle"
+      );
+
+      delete loadingCharacters[id];
+    },
+
+    // PROGRESS
+    undefined,
+
+    // ERROR
+    (err)=>{
+
+      console.error(
+        "Failed to load character:",
+        modelPath,
+        err
+      );
+
+      // -------------------------
+      // FALLBACK CHARACTER
+      // -------------------------
+      const fallback =
+        createFallbackCharacter(
+          character
+        );
+
+      scene.add(fallback);
+
+      sims[id] = fallback;
+      models[id] = fallback;
+
+      characterControllers[id] = {
+
+        mixer: null,
+
+        actions: {},
+
+        bones: {},
+
+        fallback: true
+      };
+
+      labels[id] =
+        makeDiv("label");
+
+      bubbles[id] =
+        makeDiv("bubble");
+
+      bubbles[id].style.display =
+        "none";
+
+      delete loadingCharacters[id];
+    }
+  );
 }
 
 function updateSim(id, c) {
@@ -583,7 +969,7 @@ function updateSim(id, c) {
   // =========================
   // CLEAR UPPER LAYER
   // =========================
-  //let hasUpperAnimation = false;
+  let hasUpperAnimation = false;
 
   // =========================
 // INTERACTION SYSTEM
