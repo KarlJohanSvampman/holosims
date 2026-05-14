@@ -886,7 +886,7 @@ if (c.activity?.prop_id) {
     clearUpperAnimation(id);
   }
 }
-}
+
 
 function updateMailboxes(state){
   for(const m of state.mailboxes||[]){
