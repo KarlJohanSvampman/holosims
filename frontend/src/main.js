@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { emojiForEmotion, showHousehold, updateOverlay } from './ui.js';
 import { getAnchorWorldPosition, findAnchor, playPropAnimation } from './interactions.js';
+import { initEditor } from "./editor.js";
 const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 const characterControllers = {};
@@ -16,7 +17,18 @@ camera.position.set(10,10,10); camera.lookAt(0,0,0);
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("c") });
 //const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
 renderer.setSize(innerWidth,innerHeight);
-window.addEventListener('resize',()=>renderer.setSize(innerWidth,innerHeight));
+window.addEventListener('resize',()=>{
+
+  camera.aspect =
+    innerWidth / innerHeight;
+
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(
+    innerWidth,
+    innerHeight
+  );
+});
 scene.add(new THREE.AmbientLight(0xffffff,.4));
 const light=new THREE.DirectionalLight(0xffffff,1); light.position.set(5,10,5); scene.add(light);
 scene.add(new THREE.GridHelper(24,24));
@@ -25,8 +37,15 @@ const propRegistry = {};
 const loadingCharacters = {};
 const interactionStates = {};
 function update(delta) {
-  for (const p of Object.values(propRegistry)) {
-    if (p.mixer) p.mixer.update(delta);
+  for(const id in propRegistry){
+
+    const prop = propRegistry[id];
+
+    if(!prop) continue;
+
+    if(!prop.mixer) continue;
+
+    prop.mixer.update(delta);
   }
 }
 
@@ -1329,8 +1348,16 @@ function animate(){
   const delta = clock.getDelta();
 
   // update character mixers
-  for(const ctrl of Object.values(characterControllers)){
-    ctrl.mixer.update(delta);
+  for(const id in characterControllers){
+
+    const controller =
+      characterControllers[id];
+
+    if(!controller) continue;
+
+    if(!controller.mixer) continue;
+
+    controller.mixer.update(delta);
   }
 
   // update prop mixers
@@ -1338,4 +1365,13 @@ function animate(){
 
   renderer.render(scene,camera);
 }
+
+initEditor({
+  scene,
+  camera,
+  renderer,
+  propRegistry,
+  sims
+});
+
 animate();
