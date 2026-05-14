@@ -1,714 +1,275 @@
-from collections import deque
-
-from brain.memory import store_memory
-from brain.conversation import after_speech, maybe_end
-from brain.relationships import apply_interaction
-from brain.emotion import apply_emotion_inertia
-
-from systems.offgrid import send_offgrid
-from systems.emergency import create_911_call
-from systems.activities import (
-    update_activity,
-    update_interaction_phases
-)
-
-from systems.payments import attempt_pay_bills
-
-from systems.props import (
-    find_nearest_prop,
-    get_prop_by_id
-)
-
-from systems.occupancy import (
-    find_free_anchor,
-    reserve_anchor,
-    release_anchor,
-    release_reservation
-)
-
-from systems.phone import make_call
-from systems.commitment import start_commitment
-from systems.habits import record_habit
-
-from systems.navgrid import (
-    build_blocked_set,
-    is_walkable
+from systems.templates import (
+    get_prop_template
 )
 
 
 # ============================================
-# EMOTION → ACTION OVERRIDES
+# BASIC LOOKUPS
 # ============================================
-EMOTION_BLOCKS = {
-    "fearful": {
-        "smash": "leave",
-        "yell": "leave",
-        "speak": "leave"
-    },
+def get_prop_by_id(world, prop_id):
 
-    "sad": {
-        "smash": "relax",
-        "yell": "relax"
-    },
+    for prop in world.get("props", []):
 
-    "awkward": {
-        "smash": "wait",
-        "yell": "wait"
-    },
-
-    "calm": {
-        "smash": "speak",
-        "yell": "speak"
-    },
-
-    "annoyed": {
-        "smash": "yell"
-    },
-
-    "curious": {
-        "smash": "observe"
-    }
-}
-
-
-# ============================================
-# HELPERS
-# ============================================
-def enqueue_anchor(c, prop, anchor):
-
-    anchor.setdefault("queue", [])
-
-    if c["id"] not in anchor["queue"]:
-        anchor["queue"].append(c["id"])
-
-
-def compute_facing(cx, cy, tx, ty):
-
-    dx = tx - cx
-    dy = ty - cy
-
-    if abs(dx) > abs(dy):
-        return "east" if dx > 0 else "west"
-
-    return "south" if dy > 0 else "north"
-
-
-def is_occupied(x, y, world, ignore_id=None):
-
-    for c2 in world.get("characters", {}).values():
-
-        if c2["id"] == ignore_id:
-            continue
-
-        if (c2["x"], c2["y"]) == (x, y):
-            return True
-
-    return False
-
-
-def neighbors(x, y):
-
-    return [
-        (x + 1, y),
-        (x - 1, y),
-        (x, y + 1),
-        (x, y - 1)
-    ]
-
-
-def is_adjacent(c, pos):
-
-    return (
-        abs(c["x"] - pos["x"])
-        + abs(c["y"] - pos["y"])
-    ) <= 1
-
-
-def face_target(c, pos):
-
-    c["facing"] = compute_facing(
-        c["x"],
-        c["y"],
-        pos["x"],
-        pos["y"]
-    )
-
-
-def snap_to_anchor(c, anchor):
-
-    c["x"] = anchor["x"]
-    c["y"] = anchor["y"]
-
-
-# ============================================
-# PATHFINDING
-# ============================================
-def find_path(c, tx, ty, world):
-
-    start = (c["x"], c["y"])
-    goal = (tx, ty)
-
-    blocked = build_blocked_set(world)
-
-    queue = deque([(start, [])])
-    visited = {start}
-
-    while queue:
-
-        (x, y), path = queue.popleft()
-
-        if (x, y) == goal:
-            return path
-
-        for nx, ny in neighbors(x, y):
-
-            if (nx, ny) in visited:
-                continue
-
-            # -----------------------------
-            # GRID LIMITS
-            # -----------------------------
-            if nx < 0 or ny < 0:
-                continue
-
-            if nx >= world["grid"]["width"]:
-                continue
-
-            if ny >= world["grid"]["height"]:
-                continue
-
-            # -----------------------------
-            # WALKABILITY
-            # -----------------------------
-            if (nx, ny) != goal:
-
-                if not is_walkable(
-                    nx,
-                    ny,
-                    world,
-                    blocked
-                ):
-                    continue
-
-                if is_occupied(
-                    nx,
-                    ny,
-                    world,
-                    ignore_id=c["id"]
-                ):
-                    continue
-
-            visited.add((nx, ny))
-
-            queue.append(
-                (
-                    (nx, ny),
-                    path + [(nx, ny)]
-                )
-            )
-
-    return []
-
-
-# ============================================
-# BUS
-# ============================================
-def find_bus_at_stop(c, world):
-
-    for e in world.get("entities", {}).values():
-
-        bus = e["components"].get("bus")
-        pos = e["components"].get("position")
-
-        if not bus:
-            continue
-
-        if bus["state"] != "stopped":
-            continue
-
-        dist = (
-            abs(pos["x"] - c["x"])
-            + abs(pos["y"] - c["y"])
-        )
-
-        if dist <= 1:
-
-            return {
-                "id": e["id"],
-                "position": pos,
-                "passengers": bus["passengers"]
-            }
+        if prop["id"] == prop_id:
+            return prop
 
     return None
 
 
-# ============================================
-# TARGET HELPER
-# ============================================
-def _target(c, world, action):
+def get_props_by_template(world, template_id):
 
-    tid = action.get("target_character_id")
+    return [
 
-    if tid in world.get("characters", {}):
-        return world["characters"][tid]
+        p for p in world.get("props", [])
 
-    others = [
-
-        o for o in world.get("characters", {}).values()
-
-        if o["id"] != c["id"]
-        and not o.get("off_grid")
+        if p.get("template") == template_id
     ]
 
-    others.sort(
-        key=lambda o:
-        abs(o["x"] - c["x"])
-        + abs(o["y"] - c["y"])
-    )
 
-    return others[0] if others else None
+# ============================================
+# TEMPLATE HELPERS
+# ============================================
+def get_prop_category(world, prop):
+
+    template = get_prop_template(world, prop)
+
+    if not template:
+        return None
+
+    return template.get("category")
+
+
+def get_prop_tags(world, prop):
+
+    template = get_prop_template(world, prop)
+
+    if not template:
+        return []
+
+    return template.get("tags", [])
+
+
+def get_prop_capabilities(world, prop):
+
+    template = get_prop_template(world, prop)
+
+    if not template:
+        return []
+
+    return template.get("capabilities", [])
 
 
 # ============================================
-# EXECUTION
+# TEMPLATE FILTERING
 # ============================================
-def execute(c, decision, world):
+def props_with_tag(world, tag):
 
-    update_interaction_phases(c, world)
+    results = []
 
-    # ========================================
-    # BLOCK MOVEMENT DURING START/STOP PHASES
-    # ========================================
-    act = c.get("activity")
+    for prop in world.get("props", []):
 
-    if act and act.get("phase") in ["start", "stop"]:
-        return
+        tags = get_prop_tags(world, prop)
 
-    # ========================================
-    # ACTIVE ACTIVITY UPDATE
-    # ========================================
-    if update_activity(c, world):
-        return
+        if tag in tags:
+            results.append(prop)
 
-    if not decision:
-        return
+    return results
 
-    emotion = decision.get(
-        "emotion",
-        c.get("emotion", "calm")
+
+def props_with_capability(world, capability):
+
+    results = []
+
+    for prop in world.get("props", []):
+
+        caps = get_prop_capabilities(world, prop)
+
+        if capability in caps:
+            results.append(prop)
+
+    return results
+
+
+def props_in_category(world, category):
+
+    results = []
+
+    for prop in world.get("props", []):
+
+        cat = get_prop_category(world, prop)
+
+        if cat == category:
+            results.append(prop)
+
+    return results
+
+
+# ============================================
+# DISTANCE
+# ============================================
+def prop_distance(c, prop):
+
+    return (
+        abs(c["x"] - prop["x"])
+        + abs(c["y"] - prop["y"])
     )
 
-    apply_emotion_inertia(c, emotion)
 
-    c["emotion"] = emotion
-    c["mood"] = emotion
+# ============================================
+# NEAREST PROP
+# ============================================
+def find_nearest_prop(
 
-    action = decision.get("action", {})
+    c,
+    world,
 
-    raw_name = action.get("name", "wait")
+    capability=None,
+    tag=None,
+    category=None,
+    template_id=None
+):
 
-    name = EMOTION_BLOCKS.get(
-        emotion,
-        {}
-    ).get(raw_name, raw_name)
+    candidates = []
 
-    utterance = (
-        action.get("utterance")
-        or ""
-    ).strip()
+    for prop in world.get("props", []):
 
-    c["last_action"] = name
+        # -----------------------------
+        # TEMPLATE FILTER
+        # -----------------------------
+        if template_id:
 
-    c["internal_thought"] = decision.get(
-        "thought",
-        c.get("internal_thought", "")
-    )
+            if prop.get("template") != template_id:
+                continue
 
-    c["is_moving"] = False
+        # -----------------------------
+        # CATEGORY FILTER
+        # -----------------------------
+        if category:
 
-    # ========================================
-    # MOVE
-    # ========================================
-    if name == "move":
-
-        tx = action.get("x")
-        ty = action.get("y")
-
-        if tx is None or ty is None:
-            return
-
-        path = find_path(c, tx, ty, world)
-
-        if not path:
-
-            release_reservation(c, world)
-
-            c["activity"] = None
-
-            return
-
-        nx, ny = path[0]
-
-        c["facing"] = compute_facing(
-            c["x"],
-            c["y"],
-            nx,
-            ny
-        )
-
-        c["x"] = nx
-        c["y"] = ny
-
-        c["is_moving"] = True
-
-    # ========================================
-    # WAIT
-    # ========================================
-    elif name == "wait":
-
-        c["activity"] = {
-
-            "name": "wait",
-
-            "phase": "loop",
-
-            "phase_started": world["tick"],
-
-            "duration": action.get(
-                "duration",
-                2
+            cat = get_prop_category(
+                world,
+                prop
             )
-        }
 
-    # ========================================
-    # INTERACT
-    # ========================================
-    elif name == "interact":
-
-        prop_id = action.get("prop_id")
-        anchor_name = action.get("anchor")
-
-        prop = get_prop_by_id(
-            world,
-            prop_id
-        )
-
-        if not prop:
-
-            release_reservation(c, world)
-
-            return
-
-        anchor = next(
-
-            (
-                a for a in prop.get("anchors", [])
-                if a["name"] == anchor_name
-            ),
-
-            None
-        )
-
-        if not anchor:
-
-            release_reservation(c, world)
-
-            return
+            if cat != category:
+                continue
 
         # -----------------------------
-        # RESERVED BY SOMEONE ELSE
+        # TAG FILTER
         # -----------------------------
-        if anchor.get("reserved_by") not in [None, c["id"]]:
-            return
+        if tag:
 
-        # -----------------------------
-        # MUST BE ADJACENT
-        # -----------------------------
-        if not is_adjacent(c, anchor):
-            return
+            tags = get_prop_tags(
+                world,
+                prop
+            )
 
-        # -----------------------------
-        # OCCUPIED
-        # -----------------------------
-        if anchor.get("occupied_by"):
-
-            enqueue_anchor(c, prop, anchor)
-
-            c["activity"] = {
-
-                "name": "waiting_for_anchor",
-
-                "prop_id": prop_id,
-
-                "anchor": anchor_name,
-
-                "phase": "loop",
-
-                "phase_started": world["tick"]
-            }
-
-            return
+            if tag not in tags:
+                continue
 
         # -----------------------------
-        # FACE ANCHOR
+        # CAPABILITY FILTER
         # -----------------------------
-        face_target(c, anchor)
+        if capability:
 
-        # -----------------------------
-        # OCCUPY
-        # -----------------------------
-        reserve_anchor(
-            c,
-            prop,
-            anchor
-        )
+            caps = get_prop_capabilities(
+                world,
+                prop
+            )
 
-        # reservation consumed
-        anchor["reserved_by"] = None
-        anchor["reserved_until"] = None
+            if capability not in caps:
+                continue
 
-        # -----------------------------
-        # START INTERACTION
-        # -----------------------------
-        interaction_name = anchor.get(
-            "interactionName",
-            "interact"
-        )
+        candidates.append(prop)
 
-        interaction_id = (
-            f"{c['id']}_"
-            f"{prop_id}_"
-            f"{anchor_name}_"
-            f"{world['tick']}"
-        )
+    if not candidates:
+        return None
 
-        c["activity"] = {
+    candidates.sort(
 
-            "interaction_id": interaction_id,
+        key=lambda p:
+        prop_distance(c, p)
+    )
 
-            "name": interaction_name,
+    return candidates[0]
 
-            "prop_id": prop_id,
 
-            "anchor": anchor_name,
+# ============================================
+# ANCHORS
+# ============================================
+def get_anchor(prop, anchor_name):
 
-            "phase": "start",
+    for anchor in prop.get("anchors", []):
 
-            "phase_started": world["tick"],
+        if anchor["name"] == anchor_name:
+            return anchor
 
-            "duration": 20
-        }
+    return None
 
-    # ========================================
-    # SPEECH
-    # ========================================
-    elif name in ["speak", "yell"]:
 
-        if not utterance:
-            return
+def get_anchors_by_interaction(
+    prop,
+    interaction_name
+):
 
-        target = _target(c, world, action)
+    results = []
 
-        if not target:
-            return
+    for anchor in prop.get("anchors", []):
 
-        c["last_utterance"] = utterance
+        if (
+            anchor.get("interactionName")
+            == interaction_name
+        ):
+            results.append(anchor)
 
-        c.setdefault(
-            "speech_bubbles",
-            []
-        ).append({
+    return results
 
-            "text": utterance,
 
-            "tick": world["tick"]
-        })
+# ============================================
+# CONTAINERS
+# ============================================
+def is_container(world, prop):
 
-        c["speech_bubbles"] = \
-            c["speech_bubbles"][-4:]
+    template = get_prop_template(world, prop)
 
-        speech_act = decision.get(
-            "speech_act",
-            "statement"
-        )
+    if not template:
+        return False
 
-        topic = (
+    return "container" in template.get(
+        "capabilities",
+        []
+    )
 
-            decision.get("topic")
 
-            or (c.get("conversation") or {})
-            .get("topic")
+def get_prop_inventory(prop):
 
-            or "general"
-        )
+    return prop.setdefault(
+        "inventory",
+        []
+    )
 
-        after_speech(
-            c,
-            target,
-            float(
-                decision.get(
-                    "conversation_score",
-                    50
-                )
-            ),
-            topic
-        )
 
-        store_memory(
-            c,
-            utterance,
-            .55,
-            ["conversation", topic, speech_act],
-            "conversation",
-            world["tick"],
-            target=target["id"],
-            speech_act=speech_act
-        )
+def add_item_to_prop(
+    prop,
+    item_instance
+):
 
-        apply_interaction(
-            c,
-            target,
-            speech_act
-        )
+    inv = get_prop_inventory(prop)
 
-    # ========================================
-    # LEAVE
-    # ========================================
-    elif name == "leave":
+    inv.append(item_instance)
 
-        c["conversation"] = None
 
-        c["x"] = max(0, c["x"] - 1)
+def remove_item_from_prop(
+    prop,
+    item_id
+):
 
-    # ========================================
-    # OFFGRID
-    # ========================================
-    elif name == "go_work":
+    inv = get_prop_inventory(prop)
 
-        c["transport"] = {"mode": "car"}
+    for i, item in enumerate(inv):
 
-        send_offgrid(
-            c,
-            world,
-            "work",
-            40
-        )
+        if item["id"] == item_id:
 
-    elif name == "go_interview":
+            return inv.pop(i)
 
-        send_offgrid(
-            c,
-            world,
-            "interview",
-            20
-        )
-
-    elif name == "go_shopping":
-
-        send_offgrid(
-            c,
-            world,
-            "shopping",
-            18
-        )
-
-    elif name == "go_leisure":
-
-        send_offgrid(
-            c,
-            world,
-            "leisure",
-            28
-        )
-
-    # ========================================
-    # NEEDS
-    # ========================================
-    elif name == "eat":
-
-        start_commitment(
-            c,
-            "eat",
-            600
-        )
-
-        record_habit(
-            c,
-            "eat",
-            world
-        )
-
-    elif name == "drink":
-
-        start_commitment(
-            c,
-            "drink",
-            10
-        )
-
-        record_habit(
-            c,
-            "drink",
-            world
-        )
-
-    elif name == "sleep":
-
-        record_habit(
-            c,
-            "sleep",
-            world
-        )
-
-    # ========================================
-    # PHONE
-    # ========================================
-    elif name == "call":
-
-        target = world["characters"].get(
-            action["target"]
-        )
-
-        if not target:
-            return
-
-        c["is_on_phone"] = True
-
-        make_call(
-            c,
-            target,
-            world
-        )
-
-    elif name == "end_call":
-
-        c["is_on_phone"] = False
-
-    # ========================================
-    # EMERGENCY
-    # ========================================
-    elif name == "call_911":
-
-        report = (
-            utterance
-            or "There is an emergency here."
-        )
-
-        create_911_call(
-            world,
-            c,
-            action.get("emergency_type")
-            or "police",
-            report
-        )
-
-        c["last_utterance"] = report
-
-    # ========================================
-    # FALLBACK
-    # ========================================
-    else:
-
-        c["last_utterance"] = ""
-
-    maybe_end(c, world)
+    return None
