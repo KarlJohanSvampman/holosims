@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Sim Society Ultimate</title>
+  <title>Simsland</title>
   <style>
     body { margin:0; overflow:hidden; background:#111; color:#eee; font-family:system-ui, sans-serif; }
     #overlay {backdrop-filter: blur(6px);border: 1px solid rgba(255,255,255,0.1);}    
@@ -12,6 +12,13 @@
   </style>
 </head>
 <body>
+  <div id="statusBar">Status: <span id="statusText">Connecting...</span></div>
+  <div id="topbar"><b>Sim Society Ultimate</b></div>
+  <div id="householdPanel" style="position:absolute; top:60px; left:10px; background:rgba(0,0,0,.72); padding:12px; border-radius:8px; width:250px; max-height:70vh; overflow:auto; font-size:13px; display:none;">
+    <h3 id="householdName">Household Name</h3>
+    <div id="memberList"></div>
+
+</div>
   <canvas id="c"></canvas>
   <div id="overlay">Connecting...</div>
   <div id="panel"><b>Panel</b><div id="panelContent">Click a mailbox cube.</div></div>

@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from api.assets import router as assets_router
 from api.editor import router as editor_router
 from api.editor import load_definitions, save_definitions
-
+from api.view import get_view
 
 app = FastAPI(title="Simsland")
 app.add_middleware(
@@ -73,8 +73,14 @@ async def loop():
         for ws in clients:
 
             try:
-                await ws.send_json(world)
+                view_state = get_view(
+                    sim_id=SIM_ID,
+                    cx=0,
+                    cy=0,
+                    zoom=1
+                )
 
+                await ws.send_json(view_state)
             except Exception:
                 dead.append(ws)
 

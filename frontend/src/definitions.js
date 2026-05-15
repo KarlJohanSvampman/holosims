@@ -1,0 +1,485 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+// =====================================================
+// STATE
+// =====================================================
+
+let definitions = {
+  prop_templates: {},
+  item_templates: {},
+  character_templates: {},
+  interaction_templates: {},
+  activity_templates: {},
+  tile_templates: {}
+};
+
+let assets = {
+  props: [],
+  characters: [],
+  items: []
+};
+
+const tabs = [
+  'prop_templates',
+  'item_templates',
+  'character_templates',
+  'interaction_templates',
+  'activity_templates',
+  'tile_templates'
+];
+
+let currentTab = 'prop_templates';
+let currentTemplateId = null;
+
+// =====================================================
+// UI ELEMENTS
+// =====================================================
+
+const tabsEl = document.getElementById('tabs');
+const templateListEl = document.getElementById('templateList');
+const jsonEditor = document.getElementById('jsonEditor');
+const editorTitle = document.getElementById('editorTitle');
+const assetBrowser = document.getElementById('assetBrowser');
+const animationList = document.getElementById('animationList');
+const statusBar = document.getElementById('statusBar');
+
+// =====================================================
+// THREE PREVIEW
+// =====================================================
+
+const previewScene = new THREE.Scene();
+previewScene.background = new THREE.Color(0x20242a);
+
+const previewCamera = new THREE.PerspectiveCamera(
+  60,
+  1,
+  0.1,
+  1000
+);
+
+previewCamera.position.set(2,2,2);
+previewCamera.lookAt(0,0,0);
+
+const previewRenderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+previewRenderer.setSize(420,420);
+
+document
+  .getElementById('modelPreview')
+  .appendChild(previewRenderer.domElement);
+
+previewScene.add(
+  new THREE.AmbientLight(0xffffff,1.2)
+);
+
+const dir = new THREE.DirectionalLight(
+  0xffffff,
+  2
+);
+
+dir.position.set(5,10,5);
+previewScene.add(dir);
+
+previewScene.add(
+  new THREE.GridHelper(10,10)
+);
+
+const previewLoader = new GLTFLoader();
+
+let previewModel = null;
+let previewMixer = null;
+
+// =====================================================
+// LOAD DEFINITIONS
+// =====================================================
+
+async function loadDefinitions(){
+
+  try {
+
+    const res = await fetch(
+      '/api/editor/definitions?sim_id=default'
+    );
+
+    definitions = await res.json();
+
+  } catch(err){
+
+    console.warn(err);
+  }
+
+  renderTabs();
+  renderTemplateList();
+}
+
+// =====================================================
+// LOAD ASSETS
+// =====================================================
+
+async function loadAssets(){
+
+  try {
+
+    const res = await fetch('/api/assets');
+
+    assets = await res.json();
+
+  } catch(err){
+
+    console.warn(err);
+  }
+
+  renderAssets();
+}
+
+// =====================================================
+// TABS
+// =====================================================
+
+function renderTabs(){
+
+  tabsEl.innerHTML = '';
+
+  tabs.forEach(tab=>{
+
+    const el = document.createElement('div');
+
+    el.className = 'tab';
+
+    if(tab === currentTab){
+      el.classList.add('active');
+    }
+
+    el.textContent = tab;
+
+    el.onclick = ()=>{
+
+      currentTab = tab;
+      currentTemplateId = null;
+
+      renderTabs();
+      renderTemplateList();
+    };
+
+    tabsEl.appendChild(el);
+  });
+}
+
+// =====================================================
+// TEMPLATE LIST
+// =====================================================
+
+function renderTemplateList(){
+
+  templateListEl.innerHTML = '';
+
+  const bucket = definitions[currentTab] || {};
+
+  Object.entries(bucket).forEach(([id,data])=>{
+
+    const row = document.createElement('div');
+
+    row.className = 'templateRow';
+
+    row.textContent = id;
+
+    row.onclick = ()=>{
+      openTemplate(id);
+    };
+
+    templateListEl.appendChild(row);
+  });
+}
+
+// =====================================================
+// OPEN TEMPLATE
+// =====================================================
+
+function openTemplate(id){
+
+  currentTemplateId = id;
+
+  const data = definitions[currentTab][id];
+
+  jsonEditor.value = JSON.stringify(
+    data,
+    null,
+    2
+  );
+
+  editorTitle.textContent = id;
+
+  const model = data.model;
+
+  if(model){
+    loadPreviewModel(model);
+  }
+}
+
+// =====================================================
+// CREATE TEMPLATE
+// =====================================================
+
+window.createTemplate = function(){
+
+  const id = prompt('Template ID');
+
+  if(!id) return;
+
+  definitions[currentTab][id] = {};
+
+  renderTemplateList();
+}
+
+// =====================================================
+// DUPLICATE
+// =====================================================
+
+window.duplicateTemplate = function(){
+
+  if(!currentTemplateId) return;
+
+  const id = prompt('Duplicate as');
+
+  if(!id) return;
+
+  definitions[currentTab][id] = JSON.parse(
+    JSON.stringify(
+      definitions[currentTab][currentTemplateId]
+    )
+  );
+
+  renderTemplateList();
+}
+
+// =====================================================
+// DELETE
+// =====================================================
+
+window.deleteTemplate = function(){
+
+  if(!currentTemplateId) return;
+
+  delete definitions[currentTab][currentTemplateId];
+
+  currentTemplateId = null;
+
+  jsonEditor.value = '';
+
+  renderTemplateList();
+}
+
+// =====================================================
+// SAVE
+// =====================================================
+
+window.saveDefinitions = async function(){
+
+  try {
+
+    if(currentTemplateId){
+
+      definitions[currentTab][currentTemplateId] =
+        JSON.parse(jsonEditor.value);
+    }
+
+    await fetch(
+      '/api/editor/definitions?sim_id=default',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(definitions)
+      }
+    );
+
+    setStatus('Saved');
+
+  } catch(err){
+
+    console.error(err);
+
+    setStatus('Save failed');
+  }
+}
+
+// =====================================================
+// ASSET BROWSER
+// =====================================================
+
+function renderAssets(){
+
+  assetBrowser.innerHTML = '';
+
+  Object.entries(assets).forEach(([type,list])=>{
+
+    const title = document.createElement('h4');
+    title.textContent = type;
+
+    assetBrowser.appendChild(title);
+
+    list.forEach(path=>{
+
+      const row = document.createElement('div');
+
+      row.className = 'assetRow';
+      row.textContent = path;
+
+      row.onclick = ()=>{
+
+        loadPreviewModel(path);
+
+        insertModelIntoEditor(path);
+      };
+
+      assetBrowser.appendChild(row);
+    });
+  });
+}
+
+// =====================================================
+// INSERT MODEL PATH
+// =====================================================
+
+function insertModelIntoEditor(path){
+
+  try {
+
+    const data = JSON.parse(jsonEditor.value || '{}');
+
+    data.model = path;
+
+    jsonEditor.value = JSON.stringify(
+      data,
+      null,
+      2
+    );
+
+  } catch(err){
+
+    console.warn(err);
+  }
+}
+
+// =====================================================
+// PREVIEW MODEL
+// =====================================================
+
+function loadPreviewModel(path){
+
+  if(previewModel){
+    previewScene.remove(previewModel);
+  }
+
+  animationList.innerHTML = '';
+
+  previewLoader.load(path,(gltf)=>{
+
+    previewModel = gltf.scene;
+
+    previewScene.add(previewModel);
+
+    previewMixer = new THREE.AnimationMixer(
+      previewModel
+    );
+
+    // animations
+    gltf.animations.forEach((clip)=>{
+
+      const btn = document.createElement('button');
+
+      btn.className = 'animButton';
+
+      btn.textContent = clip.name;
+
+      btn.onclick = ()=>{
+
+        previewMixer.stopAllAction();
+
+        const action = previewMixer.clipAction(clip);
+
+        action.reset();
+        action.fadeIn(0.2);
+        action.play();
+      };
+
+      animationList.appendChild(btn);
+    });
+
+    // anchors
+    previewModel.traverse((o)=>{
+
+      if(
+        o.name
+        .toLowerCase()
+        .startsWith('anchor_')
+      ){
+
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(0.05),
+          new THREE.MeshBasicMaterial({
+            color: 0xff0000
+          })
+        );
+
+        o.add(sphere);
+      }
+    });
+
+    setStatus(`Loaded ${path}`);
+
+  },undefined,(err)=>{
+
+    console.error(err);
+
+    setStatus('Model load failed');
+  });
+}
+
+// =====================================================
+// STATUS
+// =====================================================
+
+function setStatus(text){
+  statusBar.textContent = text;
+}
+
+// =====================================================
+// ANIMATE
+// =====================================================
+
+const previewClock = new THREE.Clock();
+
+function animate(){
+
+  requestAnimationFrame(animate);
+
+  const delta = previewClock.getDelta();
+
+  if(previewMixer){
+    previewMixer.update(delta);
+  }
+
+  if(previewModel){
+    previewModel.rotation.y += 0.003;
+  }
+
+  previewRenderer.render(
+    previewScene,
+    previewCamera
+  );
+}
+
+animate();
+
+// =====================================================
+// STARTUP
+// =====================================================
+
+loadDefinitions();
+loadAssets();
+

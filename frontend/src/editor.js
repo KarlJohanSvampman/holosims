@@ -67,6 +67,20 @@ export function initEditor({
         }
       }
 
+      // tiles
+      for(const key in window.tileRegistry){
+
+        const tile =
+          window.tileRegistry[key];
+
+        if(tile){
+
+          objects.push(tile);
+        }
+      }
+
+
+
       // sims
       for(const id in sims){
 
@@ -117,28 +131,191 @@ export function initEditor({
   // SELECTION HIGHLIGHT
   // =====================================
 
-  function selectObject(data){
 
-    editorState.selected = data;
+function selectObject(data){
 
-    const panel =
-      document.getElementById(
-        "editorSelection"
+  editorState.selected = data;
+
+  const panel =
+    document.getElementById(
+      "editorSelection"
+    );
+
+  const inspector =
+    document.getElementById(
+      "inspectorContent"
+    );
+
+  if(!inspector){
+    console.warn(
+      "Missing inspectorContent element"
+    );
+    return;
+  }
+
+  if(panel){
+
+    panel.innerHTML = `
+      <b>${data.type}</b><br>
+      ${data.id || ""}
+    `;
+  }
+
+  // =====================================
+  // TILE
+  // =====================================
+
+  if(data.type === "tile"){
+
+    inspector.innerHTML = `
+
+      <h4>Tile</h4>
+
+      x: ${data.x}<br>
+      y: ${data.y}<br><br>
+
+      <button id="paintFloor">
+        Paint Floor
+      </button>
+
+      <button id="paintGrass">
+        Paint Grass
+      </button>
+    `;
+
+    // -------------------------
+    // EVENTS
+    // -------------------------
+
+    document
+      .getElementById("paintFloor")
+      ?.addEventListener(
+        "click",
+        ()=>{
+
+          console.log(
+            "paint floor",
+            data
+          );
+        }
       );
 
-    if(panel){
+    document
+      .getElementById("paintGrass")
+      ?.addEventListener(
+        "click",
+        ()=>{
 
-      panel.innerHTML = `
-        <b>${data.type}</b><br>
-        ${data.id}
-      `;
-    }
+          console.log(
+            "paint grass",
+            data
+          );
+        }
+      );
 
-    console.log(
-      "Selected:",
-      data
-    );
+    return;
   }
+
+  // =====================================
+  // PROP
+  // =====================================
+
+  if(data.type === "prop"){
+
+    inspector.innerHTML = `
+
+      <h4>Prop</h4>
+
+      ID: ${data.id}<br><br>
+
+      <button id="deleteProp">
+        Delete
+      </button>
+
+      <button id="rotateProp">
+        Rotate
+      </button>
+    `;
+
+    // -------------------------
+    // DELETE
+    // -------------------------
+
+    document
+      .getElementById("deleteProp")
+      ?.addEventListener(
+        "click",
+        ()=>{
+
+          console.log(
+            "delete prop",
+            data.id
+          );
+        }
+      );
+
+    // -------------------------
+    // ROTATE
+    // -------------------------
+
+    document
+      .getElementById("rotateProp")
+      ?.addEventListener(
+        "click",
+        ()=>{
+
+          console.log(
+            "rotate prop",
+            data.id
+          );
+        }
+      );
+
+    return;
+  }
+
+  // =====================================
+  // CHARACTER
+  // =====================================
+
+  if(data.type === "character"){
+
+    inspector.innerHTML = `
+
+      <h4>Character</h4>
+
+      ID: ${data.id}<br><br>
+
+      <button id="focusCharacter">
+        Focus Camera
+      </button>
+    `;
+
+    document
+      .getElementById("focusCharacter")
+      ?.addEventListener(
+        "click",
+        ()=>{
+
+          console.log(
+            "focus character",
+            data.id
+          );
+        }
+      );
+
+    return;
+  }
+
+  // =====================================
+  // FALLBACK
+  // =====================================
+
+  inspector.innerHTML = `
+    <i>No inspector available</i>
+  `;
+}
+
 
   function clearSelection(){
 
