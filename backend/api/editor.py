@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 from pathlib import Path
 import json
 from db import load_world, save_world
-
+from systems.navigation import cache_floorplan
 router = APIRouter()
 
 @router.get("/editor/world")
@@ -30,20 +30,62 @@ def load_definitions(sim_id: str):
 
     path = defs_path(sim_id)
 
+    # =====================================
+    # EMPTY DEFAULTS
+    # =====================================
+
     if not path.exists():
 
         return {
+
             "prop_templates": {},
             "item_templates": {},
             "character_templates": {},
             "interaction_templates": {},
             "activity_templates": {},
-            "tile_templates": {}
+            "tile_templates": {},
+            "floorplan_templates": {}
         }
 
-    with open(path, "r") as f:
-        return json.load(f)
+    # =====================================
+    # LOAD JSON
+    # =====================================
 
+    with open(path, "r") as f:
+
+        defs = json.load(f)
+
+    # =====================================
+    # FLOORPLAN CACHE REGISTRATION
+    # =====================================
+
+    floorplans = defs.get(
+        "floorplan_templates",
+        {}
+    )
+
+    for fp_id, fp in floorplans.items():
+
+        # ensure ID exists
+        if "id" not in fp:
+
+            fp["id"] = fp_id
+
+        try:
+
+            cache_floorplan(
+                fp_id,
+                fp
+            )
+
+        except Exception as e:
+
+            print(
+                f"Failed to cache floorplan {fp_id}:",
+                e
+            )
+
+    return defs
 
 # =====================================
 # SAVE DEFINITIONS
@@ -66,5 +108,20 @@ async def save_definitions(
 
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+    
+    floorplans = data.get(
+    "floorplan_templates",
+    {}
+    )
+
+    for fp_id, fp in floorplans.items():
+
+        if "id" not in fp:
+        fp["id"] = fp_id
+
+        cache_floorplan(
+            fp_id,
+            fp
+        )
 
     return {"ok": True}

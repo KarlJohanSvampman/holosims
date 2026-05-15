@@ -1,6 +1,20 @@
 import { detectRooms } from './roomDetection.js';
 import { generateRoomGraph } from './roomGraph.js';
 import { generateNavigationGrid } from './navigation.js';
+const FLOORPLAN_CACHE = {
+
+  roomsDirty: true,
+
+  navDirty: true,
+
+  graphDirty: true,
+
+  cachedRoomLookup: null,
+
+  cachedGraph: null,
+
+  cachedNavigation: null
+};
 const canvas = document.getElementById("floorCanvas");
 const ctx = canvas.getContext("2d");
 const ROOM_TYPES = [
@@ -59,7 +73,14 @@ let floorplan = {
   tiles: {},
   rooms: []
 };
+function invalidateNavigation(){
 
+  FLOORPLAN_CACHE.navDirty = true;
+
+  FLOORPLAN_CACHE.graphDirty = true;
+
+  FLOORPLAN_CACHE.roomsDirty = true;
+}
 function tileKey(x, y) {
   return `${x},${y}`;
 }
@@ -95,7 +116,7 @@ function ensureTile(x, y) {
 }
 
 function setFloorTile(x, y, type) {
-
+  invalidateNavigation();
   const tile = ensureTile(x, y);
 
   if (type === "erase") {
@@ -114,7 +135,7 @@ function setFloorTile(x, y, type) {
 }
 
 function setWallTile(x, y, side, type) {
-
+  invalidateNavigation();
   const tile = ensureTile(x, y);
 
   tile.walls[side] = {
@@ -484,18 +505,70 @@ async function saveDefinitions(defs) {
     }
   );
 }
+function rebuildFloorplanCaches(){
 
-async function saveFloorplan() {
-  function finalizeFloorplan(floorplan){
+  // =========================
+  // ROOM DETECTION
+  // =========================
+
+  if(FLOORPLAN_CACHE.roomsDirty){
 
     detectRooms(floorplan);
 
+    FLOORPLAN_CACHE.roomsDirty = false;
+  }
+
+  // =========================
+  // ROOM GRAPH
+  // =========================
+
+  if(FLOORPLAN_CACHE.graphDirty){
+
     generateRoomGraph(floorplan);
 
-    generateNavigationGrid(floorplan);
+    FLOORPLAN_CACHE.cachedGraph =
+      floorplan.roomGraph;
 
-    return floorplan;
+    FLOORPLAN_CACHE.graphDirty = false;
   }
+  buildRoomLookup();
+  // =========================
+  // NAVIGATION
+  // =========================
+
+  if(FLOORPLAN_CACHE.navDirty){
+
+    generateNavigationGrid(
+      floorplan
+    );
+
+    FLOORPLAN_CACHE.cachedNavigation =
+      floorplan.navigation;
+
+    FLOORPLAN_CACHE.navDirty = false;
+  }
+}
+function buildRoomLookup(){
+
+  const lookup = {};
+
+  for(const room of floorplan.rooms){
+
+    for(const tile of room.tiles){
+
+      lookup[
+        `${tile.x},${tile.y}`
+      ] = room.id;
+    }
+  }
+
+  FLOORPLAN_CACHE.cachedRoomLookup =
+    lookup;
+}
+async function saveFloorplan(){
+
+  rebuildFloorplanCaches();
+
   const defs = definitions;
 
   defs.floorplan_templates =
@@ -504,10 +577,12 @@ async function saveFloorplan() {
   defs.floorplan_templates[
     floorplan.id
   ] = floorplan;
-  const finalPlan = finalizeFloorplan(plan);
+
   await saveDefinitions(defs);
 
-  setStatus(`Saved ${floorplan.id}`);
+  setStatus(
+    `Saved ${floorplan.id}`
+  );
 }
 
 async function loadFloorplan() {
@@ -575,7 +650,7 @@ document.getElementById(
   if (selectedTiles.size === 0) {
     return;
   }
-
+  invalidateNavigation();
   const type = prompt(
     "Room Type:\n" +
     ROOM_TYPES.join(", ")

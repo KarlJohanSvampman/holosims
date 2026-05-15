@@ -1,0 +1,418 @@
+from heapq import heappush, heappop
+from collections import deque
+
+from systems.navigation_cache import NAV_CACHE
+
+
+# =========================================================
+# HEURISTIC
+# =========================================================
+
+def heuristic(a, b):
+
+    return (
+        abs(a[0] - b[0])
+        + abs(a[1] - b[1])
+    )
+
+
+# =========================================================
+# ASTAR
+# =========================================================
+
+def astar(start, goal, blocked):
+
+    open_set = []
+
+    heappush(open_set, (0, start))
+
+    came_from = {}
+
+    g_score = {
+        start: 0
+    }
+
+    while open_set:
+
+        _, current = heappop(open_set)
+
+        if current == goal:
+
+            path = []
+
+            while current in came_from:
+
+                path.append(current)
+
+                current = came_from[current]
+
+            path.reverse()
+
+            return path
+
+        x, y = current
+
+        neighbors = [
+
+            (x + 1, y),
+            (x - 1, y),
+            (x, y + 1),
+            (x, y - 1)
+        ]
+
+        for n in neighbors:
+
+            if n in blocked:
+                continue
+
+            tentative = (
+                g_score[current] + 1
+            )
+
+            if tentative < g_score.get(n, 999999):
+
+                came_from[n] = current
+
+                g_score[n] = tentative
+
+                f = tentative + heuristic(n, goal)
+
+                heappush(open_set, (f, n))
+
+    return []
+
+
+# =========================================================
+# ROOM LOOKUP
+# =========================================================
+
+def build_room_lookup(floorplan):
+
+    lookup = {}
+
+    for room in floorplan.get("rooms", []):
+
+        for tile in room.get("tiles", []):
+
+            lookup[
+                (tile["x"], tile["y"])
+            ] = room["id"]
+
+    return lookup
+
+
+# =========================================================
+# DOOR LOOKUP
+# =========================================================
+
+def build_door_lookup(floorplan):
+
+    lookup = {}
+
+    for door in floorplan.get("doors", []):
+
+        lookup[
+            (door["x"], door["y"])
+        ] = door
+
+    return lookup
+
+
+# =========================================================
+# ROOM PATH BFS
+# =========================================================
+
+def find_room_path(graph, start, goal):
+
+    queue = deque([[start]])
+
+    visited = set()
+
+    while queue:
+
+        path = queue.popleft()
+
+        room = path[-1]
+
+        if room == goal:
+            return path
+
+        if room in visited:
+            continue
+
+        visited.add(room)
+
+        for n in graph[room]["neighbors"]:
+
+            queue.append(path + [n])
+
+    return []
+
+
+# =========================================================
+# CONNECTING DOOR
+# =========================================================
+
+def find_connecting_door(
+    floorplan,
+    room_a,
+    room_b
+):
+
+    for door in floorplan.get("doors", []):
+
+        connects = door.get("connects", [])
+
+        if set(connects) == {room_a, room_b}:
+            return door
+
+    return None
+
+
+# =========================================================
+# ROOM ACCESS
+# =========================================================
+
+def can_access_room(c, room):
+
+    privacy = room.get(
+        "privacy",
+        "shared"
+    )
+
+    if privacy == "shared":
+        return True
+
+    if privacy == "private":
+
+        return (
+            room.get("owner_character_id")
+            == c["id"]
+        )
+
+    return True
+
+
+# =========================================================
+# CACHE FLOORPLAN
+# =========================================================
+
+def cache_floorplan(
+    floorplan_id,
+    floorplan
+):
+    "room_routes": {}   
+    rooms = list(
+    floorplan.get(
+        "roomGraph",
+        {}
+    ).keys()
+)
+
+for a in rooms:
+
+    for b in rooms:
+
+        if a == b:
+            continue
+
+        route = find_room_path(
+            floorplan["roomGraph"],
+            a,
+            b
+        )
+
+        NAV_CACHE[
+            floorplan_id
+        ]["room_routes"][
+            (a, b)
+        ] = route
+    NAV_CACHE[floorplan_id] = {
+
+        "room_lookup":
+        build_room_lookup(floorplan),
+
+        "door_lookup":
+        build_door_lookup(floorplan),
+
+        "room_graph":
+        floorplan.get("roomGraph", {}),
+
+        "navigation":
+        floorplan.get("navigation", {})
+    }
+
+
+# =========================================================
+# GET ROOM FROM TILE
+# =========================================================
+
+def get_room_at_position(
+    floorplan_id,
+    x,
+    y
+):
+
+    nav = NAV_CACHE.get(
+        floorplan_id
+    )
+
+    if not nav:
+        return None
+
+    return nav[
+        "room_lookup"
+    ].get((x, y))
+
+
+# =========================================================
+# ROOM-TO-ROOM ROUTE
+# =========================================================
+
+def build_room_route(
+    floorplan,
+    start_room,
+    target_room
+):
+
+    graph = floorplan.get(
+        "roomGraph",
+        {}
+    )
+
+    return find_room_path(
+        graph,
+        start_room,
+        target_room
+    )
+
+
+# =========================================================
+# FULL BUILDING PATH
+# =========================================================
+
+def build_building_path(
+    floorplan,
+    start_tile,
+    target_tile
+):
+
+    blocked_raw = (
+    floorplan
+    .get("navigation", {})
+    .get("blocked", [])
+    )
+
+    blocked = set()
+
+    for b in blocked_raw:
+
+        if isinstance(b, str):
+
+            x, y = b.split(",")
+
+            blocked.add((
+                int(x),
+                int(y)
+         ))
+
+        else:
+
+            blocked.add(tuple(b))
+
+    return astar(
+        start_tile,
+        target_tile,
+        blocked
+    )
+
+
+# =========================================================
+# MULTI-ROOM PATH
+# =========================================================
+
+def build_multi_room_path(
+    floorplan,
+    start_tile,
+    target_tile
+):
+
+    floorplan_id = floorplan["id"]
+
+    start_room = get_room_at_position(
+        floorplan_id,
+        start_tile[0],
+        start_tile[1]
+    )
+
+    target_room = get_room_at_position(
+        floorplan_id,
+        target_tile[0],
+        target_tile[1]
+    )
+
+    if not start_room or not target_room:
+        return []
+
+    # same room
+    if start_room == target_room:
+
+        return build_building_path(
+            floorplan,
+            start_tile,
+            target_tile
+        )
+
+    room_route = build_room_route(
+        floorplan,
+        start_room,
+        target_room
+    )
+
+    if not room_route:
+        return []
+
+    final_path = []
+
+    current_tile = start_tile
+
+    for i in range(
+        len(room_route) - 1
+    ):
+
+        room_a = room_route[i]
+        room_b = room_route[i + 1]
+
+        door = find_connecting_door(
+            floorplan,
+            room_a,
+            room_b
+        )
+
+        if not door:
+            continue
+
+        door_tile = (
+            door["x"],
+            door["y"]
+        )
+
+        segment = build_building_path(
+            floorplan,
+            current_tile,
+            door_tile
+        )
+
+        final_path.extend(segment)
+
+        current_tile = door_tile
+
+    final_segment = build_building_path(
+        floorplan,
+        current_tile,
+        target_tile
+    )
+
+    final_path.extend(final_segment)
+
+    return final_path
