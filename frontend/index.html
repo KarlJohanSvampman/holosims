@@ -9,19 +9,44 @@
     #panel { position:absolute; top:10px; right:10px; background:rgba(0,0,0,.72); padding:12px; border-radius:8px; width:350px; max-height:90vh; overflow:auto; font-size:13px; }
     .bubble { position:absolute; transform:translate(-50%,-100%); background:#fff; color:#111; border-radius:12px; padding:4px 8px; font-size:12px; pointer-events:none; max-width:240px; box-shadow:0 2px 8px rgba(0,0,0,.3); }
     .label { position:absolute; transform:translate(-50%,-100%); color:#fff; text-shadow:0 1px 4px #000; font-size:13px; font-weight:700; pointer-events:none; }
+    #viewerInspector {
+
+    position: fixed;
+
+    top: 10px;
+    right: 10px;
+
+    width: 260px;
+
+    background: rgba(0,0,0,0.85);
+
+    color: white;
+
+    padding: 12px;
+
+    z-index: 9999;
+
+    font-family: monospace;
+
+    border: 1px solid #444;
+  }
+
   </style>
 </head>
 <body>
-  <div id="statusBar">Status: <span id="statusText">Connecting...</span></div>
-  <div id="topbar"><b>Sim Society Ultimate</b></div>
-  <div id="householdPanel" style="position:absolute; top:60px; left:10px; background:rgba(0,0,0,.72); padding:12px; border-radius:8px; width:250px; max-height:70vh; overflow:auto; font-size:13px; display:none;">
-    <h3 id="householdName">Household Name</h3>
-    <div id="memberList"></div>
+
+<div id="viewerInspector">
+
+  <h3>Inspector</h3>
+
+  <div id="viewerSelection">
+    Nothing selected
+  </div>
 
 </div>
+</div>
   <canvas id="c"></canvas>
-  <div id="overlay">Connecting...</div>
-  <div id="panel"><b>Panel</b><div id="panelContent">Click a mailbox cube.</div></div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

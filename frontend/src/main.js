@@ -1,60 +1,63 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OrbitControls }
+from "three/examples/jsm/controls/OrbitControls.js";
+const selectable = [];
+const canvas = document.getElementById("c");
+const raycaster =
+  new THREE.Raycaster();
 
-export const scene = new THREE.Scene();
+const mouse =
+  new THREE.Vector2();
+const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x20242a);
 
-export const camera =
-  new THREE.OrthographicCamera(
-    -12,
-    12,
-    8,
-    -8,
-    0.1,
-    1000
+const camera = new THREE.OrthographicCamera(
+  -20,
+  20,
+  12,
+  -12,
+  0.1,
+  1000
+);
+
+camera.position.set(20, 20, 20);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true
+});
+
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const controls = new OrbitControls(
+  camera,
+  renderer.domElement
+);
+
+controls.enableDamping = true;
+
+window.addEventListener("resize", ()=>{
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
   );
 
-camera.position.set(10,10,10);
-camera.lookAt(0,0,0);
-
-export const renderer =
-  new THREE.WebGLRenderer({
-    canvas: document.getElementById("c"),
-    antialias: true
-  });
-
-renderer.setSize(
-  innerWidth,
-  innerHeight
-);
-
-window.addEventListener(
-  "resize",
-  ()=>{
-
-    camera.updateProjectionMatrix();
-
-    renderer.setSize(
-      innerWidth,
-      innerHeight
-    );
-  }
-);
+  camera.updateProjectionMatrix();
+});
 
 scene.add(
-  new THREE.AmbientLight(
-    0xffffff,
-    0.5
-  )
+  new THREE.AmbientLight(0xffffff, 0.6)
 );
 
-const light =
-  new THREE.DirectionalLight(
-    0xffffff,
-    1
-  );
+const light = new THREE.DirectionalLight(
+  0xffffff,
+  1
+);
 
-light.position.set(5,10,5);
+light.position.set(10,20,10);
 
 scene.add(light);
 
@@ -62,311 +65,343 @@ scene.add(
   new THREE.GridHelper(100,100)
 );
 
-const loader =
-  new GLTFLoader();
+const loader = new GLTFLoader();
 
-const clock =
-  new THREE.Clock();
-
-export const sims = {};
-export const propRegistry = {};
-export const tileRegistry = {};
+const sims = {};
+const props = {};
+const tiles = {};
 
 let definitions = {};
 
+function createTile(tile){
 
-// =====================================================
-// TILES
-// =====================================================
+  const mesh = new THREE.Mesh(
+
+    new THREE.PlaneGeometry(1,1),
+
+    new THREE.MeshStandardMaterial({
+
+      color:
+        tile.walkable
+        ? 0x557799
+        : 0xaa3333,
+
+      side: THREE.DoubleSide
+    })
+  );
+
+  mesh.rotation.x = -Math.PI / 2;
+
+  mesh.position.set(
+    tile.x - 10,
+    0,
+    tile.y - 7
+  );
+  mesh.userData = {
+
+  type: "tile",
+
+  x: tile.x,
+  y: tile.y
+};
+
+selectable.push(mesh);
+  scene.add(mesh);
+
+
+
+  return mesh;
+}
 
 function updateTiles(state){
 
-  const tiles =
+  const arr =
     Array.isArray(state.tiles)
     ? state.tiles
     : Object.values(state.tiles || {});
 
-  const active = new Set();
-
-  for(const tile of tiles){
+  for(const tile of arr){
 
     const key =
       `${tile.x},${tile.y}`;
 
-    active.add(key);
+    if(!tiles[key]){
 
-    if(tileRegistry[key]){
-      continue;
+      tiles[key] =
+        createTile(tile);
     }
-
-    const mesh =
-      new THREE.Mesh(
-
-        new THREE.PlaneGeometry(1,1),
-
-        new THREE.MeshStandardMaterial({
-
-          color:
-            tile.walkable
-            ? 0x557799
-            : 0xaa3333,
-
-          side:
-            THREE.DoubleSide
-        })
-      );
-
-    mesh.rotation.x =
-      -Math.PI / 2;
-
-    mesh.position.set(
-      tile.x - 10,
-      0,
-      tile.y - 7
-    );
-
-    scene.add(mesh);
-
-    tileRegistry[key] = mesh;
-  }
-
-  for(const key in tileRegistry){
-
-    if(active.has(key)){
-      continue;
-    }
-
-    scene.remove(
-      tileRegistry[key]
-    );
-
-    delete tileRegistry[key];
   }
 }
 
-
-// =====================================================
-// PROPS
-// =====================================================
-
 function createFallbackProp(prop){
 
-  const mesh =
-    new THREE.Mesh(
+  const mesh = new THREE.Mesh(
 
-      new THREE.BoxGeometry(1,1,1),
+    new THREE.BoxGeometry(1,1,1),
 
-      new THREE.MeshStandardMaterial({
-        color: 0xff00ff
-      })
-    );
+    new THREE.MeshStandardMaterial({
+      color: 0xff00ff
+    })
+  );
 
   mesh.position.set(
     prop.x - 10,
     0.5,
     prop.y - 7
   );
+  mesh.userData = {
+
+    type: "prop",
+
+    id: prop.id,
+
+    template: prop.template
+  };
+
+  selectable.push(mesh);
+  scene.add(mesh);
 
   return mesh;
-}
-
-function loadProp(prop){
-
-  const template =
-    definitions
-    ?.prop_templates
-    ?.[prop.template];
-
-  if(!template?.model){
-
-    const mesh =
-      createFallbackProp(prop);
-
-    scene.add(mesh);
-
-    propRegistry[prop.id] = {
-      mesh,
-      fallback: true
-    };
-
-    return;
-  }
-
-  loader.load(
-
-    template.model,
-
-    (gltf)=>{
-
-      const model =
-        gltf.scene;
-
-      model.position.set(
-        prop.x - 10,
-        0,
-        prop.y - 7
-      );
-
-      scene.add(model);
-
-      propRegistry[prop.id] = {
-        mesh: model,
-        mixer:
-          new THREE.AnimationMixer(model)
-      };
-    },
-
-    undefined,
-
-    ()=>{
-
-      const mesh =
-        createFallbackProp(prop);
-
-      scene.add(mesh);
-
-      propRegistry[prop.id] = {
-        mesh,
-        fallback: true
-      };
-    }
-  );
 }
 
 function updateProps(state){
 
   for(const prop of state.props || []){
 
-    if(!propRegistry[prop.id]){
+    if(props[prop.id]){
 
-      loadProp(prop);
+      props[prop.id].position.set(
+        prop.x - 10,
+        0.5,
+        prop.y - 7
+      );
 
       continue;
     }
 
-    const mesh =
-      propRegistry[prop.id].mesh;
+    const template =
+      definitions
+      ?.prop_templates
+      ?.[prop.template];
 
-    mesh.position.set(
-      prop.x - 10,
-      0,
-      prop.y - 7
+    if(!template?.model){
+
+      props[prop.id] =
+        createFallbackProp(prop);
+
+      continue;
+    }
+
+    loader.load(
+
+      template.model,
+
+      (gltf)=>{
+
+        const model = gltf.scene;
+
+        model.position.set(
+          prop.x - 10,
+          0,
+          prop.y - 7
+        );
+        model.userData = {
+
+            type: "prop",
+
+            id: prop.id,
+
+            template: prop.template
+          };
+
+        selectable.push(model);
+        scene.add(model);
+
+        props[prop.id] = model;
+      },
+
+      undefined,
+
+      ()=>{
+
+        props[prop.id] =
+          createFallbackProp(prop);
+      }
     );
   }
+
+   
 }
-
-
-// =====================================================
-// CHARACTERS
-// =====================================================
 
 function createFallbackCharacter(c){
 
-  const mesh =
-    new THREE.Mesh(
+  const mesh = new THREE.Mesh(
 
-      new THREE.CapsuleGeometry(
-        0.35,
-        1
-      ),
+    new THREE.CapsuleGeometry(
+      0.35,
+      1
+    ),
 
-      new THREE.MeshStandardMaterial({
-        color: 0x00ffff
-      })
-    );
+    new THREE.MeshStandardMaterial({
+      color: 0x00ffff
+    })
+  );
 
   mesh.position.set(
     c.x - 10,
     1,
     c.y - 7
   );
+  mesh.userData = {
+
+    type: "character",
+
+    id: c.id,
+
+    name: c.name
+  };
+
+  selectable.push(mesh);
+  scene.add(mesh);
 
   return mesh;
 }
 
-function createSim(id, c){
-
-  const template =
-    definitions
-    ?.character_templates
-    ?.[c.template];
-
-  if(!template?.model){
-
-    const mesh =
-      createFallbackCharacter(c);
-
-    scene.add(mesh);
-
-    sims[id] = mesh;
-
-    return;
-  }
-
-  loader.load(
-
-    template.model,
-
-    (gltf)=>{
-
-      const model =
-        gltf.scene;
-
-      model.position.set(
-        c.x - 10,
-        0,
-        c.y - 7
-      );
-
-      scene.add(model);
-
-      sims[id] = model;
-    },
-
-    undefined,
-
-    ()=>{
-
-      const mesh =
-        createFallbackCharacter(c);
-
-      scene.add(mesh);
-
-      sims[id] = mesh;
-    }
-  );
-}
-
 function updateCharacters(state){
 
-  for(const [id,c] of Object.entries(
-    state.characters || {}
-  )){
+  for(const [id,c]
+    of Object.entries(
+      state.characters || {}
+    )
+  ){
 
-    if(!sims[id]){
+    if(sims[id]){
 
-      createSim(id,c);
+      sims[id].position.set(
+        c.x - 10,
+        1,
+        c.y - 7
+      );
 
       continue;
     }
 
-    sims[id].position.set(
-      c.x - 10,
-      0,
-      c.y - 7
+    const template =
+      definitions
+      ?.character_templates
+      ?.[c.template];
+
+    if(!template?.model){
+
+      sims[id] =
+        createFallbackCharacter(c);
+
+      continue;
+    }
+
+    loader.load(
+
+      template.model,
+
+      (gltf)=>{
+
+        const model = gltf.scene;
+
+        model.position.set(
+          c.x - 10,
+          0,
+          c.y - 7
+        );
+        model.userData = {
+
+          type: "character",
+
+          id: c.id,
+
+          name: c.name
+        };
+
+        selectable.push(model);
+        scene.add(model);
+
+        sims[id] = model;
+      },
+
+      undefined,
+
+      ()=>{
+
+        sims[id] =
+          createFallbackCharacter(c);
+      }
     );
   }
 }
+renderer.domElement.addEventListener(
 
+  "pointerdown",
 
-// =====================================================
-// WS
-// =====================================================
+  (event)=>{
 
-const ws =
-  new WebSocket(
-    `ws://${location.hostname}:8000/ws`
-  );
+    mouse.x =
+      (event.clientX /
+      window.innerWidth) * 2 - 1;
+
+    mouse.y =
+      -(event.clientY /
+      window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(
+      mouse,
+      camera
+    );
+
+    const hits =
+      raycaster.intersectObjects(
+        selectable,
+        true
+      );
+
+    if(!hits.length){
+
+      document
+        .getElementById(
+          "viewerSelection"
+        ).innerHTML =
+          "Nothing selected";
+
+      return;
+    }
+
+    let obj = hits[0].object;
+
+    while(
+      obj &&
+      !obj.userData?.type
+    ){
+      obj = obj.parent;
+    }
+
+    if(!obj) return;
+
+    const d = obj.userData;
+
+    document
+      .getElementById(
+        "viewerSelection"
+      ).innerHTML = `
+
+        <b>${d.type}</b><br>
+
+        ${d.id || ""}<br>
+
+        ${d.name || ""}
+      `;
+  }
+);
+const ws = new WebSocket(
+  `ws://${location.hostname}:8000/ws`
+);
 
 ws.onmessage = (e)=>{
 
@@ -377,93 +412,14 @@ ws.onmessage = (e)=>{
     state.definitions || {};
 
   updateTiles(state);
-
   updateProps(state);
-
   updateCharacters(state);
 };
 
-
-// =====================================================
-// CAMERA
-// =====================================================
-
-let dragging = false;
-let lastX = 0;
-let lastY = 0;
-
-renderer.domElement.addEventListener(
-  "mousedown",
-  (e)=>{
-
-    dragging = true;
-
-    lastX = e.clientX;
-    lastY = e.clientY;
-  }
-);
-
-window.addEventListener(
-  "mouseup",
-  ()=> dragging = false
-);
-
-window.addEventListener(
-  "mousemove",
-  (e)=>{
-
-    if(!dragging){
-      return;
-    }
-
-    const dx =
-      e.clientX - lastX;
-
-    const dy =
-      e.clientY - lastY;
-
-    camera.position.x -= dx * 0.02;
-    camera.position.z -= dy * 0.02;
-
-    lastX = e.clientX;
-    lastY = e.clientY;
-  }
-);
-
-window.addEventListener(
-  "wheel",
-  (e)=>{
-
-    camera.zoom *=
-      e.deltaY > 0
-      ? 0.9
-      : 1.1;
-
-    camera.updateProjectionMatrix();
-  }
-);
-
-
-// =====================================================
-// LOOP
-// =====================================================
-
 function animate(){
 
-  requestAnimationFrame(
-    animate
-  );
-
-  const delta =
-    clock.getDelta();
-
-  for(const p of Object.values(
-    propRegistry
-  )){
-
-    p.mixer?.update(delta);
-  }
-
+  requestAnimationFrame(animate);
+  controls.update();
   renderer.render(
     scene,
     camera
