@@ -453,11 +453,23 @@ function updateFloorplanWalls(state){
   const floorplans =
     state.floorplans || [];
 
-  for(const fp of floorplans){
+ for(const fp of floorplans){
 
-    for(const key in fp.tiles){
+  const template =
+    definitions
+    ?.floorplan_templates
+    ?.[fp.template];
 
-      const tile = fp.tiles[key];
+  if(!template) continue;
+const template =
+  definitions
+  ?.floorplan_templates
+  ?.[fp.template];
+
+if(!template) continue;
+
+for(const key in template.tiles){
+      const tile = template.tiles[key];
 
       const walls =
         tile.walls || {};
@@ -627,11 +639,18 @@ function updateFloorplanFloors(state){
   const floorplans =
     state.floorplans || [];
 
-  for(const fp of floorplans){
+for(const fp of floorplans){
 
-    for(const key in fp.tiles){
+  const template =
+    definitions
+    ?.floorplan_templates
+    ?.[fp.template];
 
-      const tile = fp.tiles[key];
+  if(!template) continue;
+
+  for(const key in template.tiles){
+
+      const tile = template.tiles[key];
 
       if(!tile.floor) continue;
 

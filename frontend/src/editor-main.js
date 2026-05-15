@@ -1,3 +1,4 @@
+
 import * as THREE from "three";
 import { OrbitControls }
 from "three/examples/jsm/controls/OrbitControls.js";
@@ -61,6 +62,74 @@ const mouse =
 
 const tiles = {};
 
+let definitions = {  floorplan_templates: {}};
+
+const worldState = {
+  floorplans: []
+};
+
+const placementState = {
+
+  active: false,
+
+  templateId: null,
+
+  rotation: 0,
+
+  preview: null
+};
+
+// =========================================
+// LOAD DEFINITIONS
+// =========================================
+
+async function loadDefinitions(){
+
+  const res = await fetch(
+    "/definitions.html?sim_id=default"
+  );
+
+  definitions = await res.json();
+
+  populateFloorplanDropdown();
+}
+
+// =========================================
+// DROPDOWN
+// =========================================
+
+function populateFloorplanDropdown(){
+
+  const select =
+    document.getElementById(
+      "floorplanSelect"
+    );
+
+  if(!select) return;
+
+  select.innerHTML = "";
+
+  const defs =
+    definitions
+    ?.floorplan_templates
+    || {};
+
+  for(const id in defs){
+
+    const opt =
+      document.createElement("option");
+
+    opt.value = id;
+    opt.textContent = id;
+
+    select.appendChild(opt);
+  }
+}
+
+// =========================================
+// TILES
+// =========================================
+
 function createTile(x,y){
 
   const mesh =
@@ -95,13 +164,173 @@ function createTile(x,y){
   tiles[`${x},${y}`] = mesh;
 }
 
-for(let x=-20;x<20;x++){
+for(let x=-40;x<40;x++){
 
-  for(let y=-20;y<20;y++){
+  for(let y=-40;y<40;y++){
 
     createTile(x,y);
   }
 }
+
+// =========================================
+// PREVIEW
+// =========================================
+
+function clearPlacementPreview(){
+
+  if(!placementState.preview)
+    return;
+
+  scene.remove(
+    placementState.preview
+  );
+
+  placementState.preview = null;
+}
+
+function buildFloorplanPreview(
+  template,
+  worldX,
+  worldY
+){
+
+  const group =
+    new THREE.Group();
+
+  for(const key in template.tiles){
+
+    const [tx,ty] = key
+      .split(",")
+      .map(Number);
+
+    const geo =
+      new THREE.PlaneGeometry(1,1);
+
+    const mat =
+      new THREE.MeshBasicMaterial({
+
+        color: 0x00ff99,
+
+        transparent: true,
+
+        opacity: 0.45,
+
+        side: THREE.DoubleSide
+      });
+
+    const mesh =
+      new THREE.Mesh(geo, mat);
+
+    mesh.rotation.x =
+      -Math.PI / 2;
+
+    mesh.position.set(
+      worldX + tx,
+      0.02,
+      worldY + ty
+    );
+
+    group.add(mesh);
+  }
+
+  group.rotation.y =
+    placementState.rotation;
+
+  return group;
+}
+
+// =========================================
+// TOOLBAR
+// =========================================
+
+document
+  .getElementById(
+    "placeFloorplanBtn"
+  )
+  .onclick = ()=>{
+
+    placementState.active = true;
+
+    placementState.templateId =
+      document.getElementById(
+        "floorplanSelect"
+      ).value;
+  };
+
+document
+  .getElementById(
+    "rotateFloorplanBtn"
+  )
+  .onclick = ()=>{
+
+    placementState.rotation +=
+      Math.PI / 2;
+  };
+
+// =========================================
+// MOUSE MOVE
+// =========================================
+
+renderer.domElement
+.addEventListener(
+
+  "pointermove",
+
+  (event)=>{
+
+    if(!placementState.active)
+      return;
+
+    mouse.x =
+      (event.clientX /
+      window.innerWidth) * 2 - 1;
+
+    mouse.y =
+      -(event.clientY /
+      window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(
+      mouse,
+      camera
+    );
+
+    const hits =
+      raycaster.intersectObjects(
+        Object.values(tiles)
+      );
+
+    if(!hits.length)
+      return;
+
+    const tile =
+      hits[0].object;
+
+    clearPlacementPreview();
+
+    const template =
+      definitions
+      ?.floorplan_templates
+      ?.[placementState.templateId];
+
+    if(template){
+
+      placementState.preview =
+        buildFloorplanPreview(
+          template,
+          tile.userData.x,
+          tile.userData.y
+        );
+
+      scene.add(
+        placementState.preview
+      );
+    }
+  }
+);
+
+// =========================================
+// CLICK
+// =========================================
 
 renderer.domElement
 .addEventListener(
@@ -135,6 +364,46 @@ renderer.domElement
     const tile =
       hits[0].object;
 
+    // =====================================
+    // PLACE FLOORPLAN
+    // =====================================
+
+    if(placementState.active){
+
+      worldState.floorplans ||= [];
+
+      worldState.floorplans.push({
+
+        id:
+          crypto.randomUUID(),
+
+        template:
+          placementState.templateId,
+
+        x: tile.userData.x,
+
+        y: tile.userData.y,
+
+        rotation:
+          placementState.rotation
+      });
+
+      document
+        .getElementById(
+          "editorSelection"
+        ).innerHTML = `
+
+          <b>Placed</b><br>
+          ${placementState.templateId}
+        `;
+
+      return;
+    }
+
+    // =====================================
+    // NORMAL TILE SELECT
+    // =====================================
+
     document
       .getElementById(
         "editorSelection"
@@ -164,6 +433,40 @@ renderer.domElement
   }
 );
 
+// =========================================
+// SAVE WORLD
+// =========================================
+
+window.saveWorld = async function(){
+
+  await fetch(
+    "/api/editor/world?sim_id=default",
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify(worldState)
+    }
+  );
+
+  alert("World saved");
+};
+
+// =========================================
+// RELOAD
+// =========================================
+
+window.reloadWorld = ()=>{
+  location.reload();
+};
+
+// =========================================
+// ANIMATE
+// =========================================
+
 function animate(){
 
   requestAnimationFrame(
@@ -178,4 +481,5 @@ function animate(){
   );
 }
 
+loadDefinitions();
 animate();
