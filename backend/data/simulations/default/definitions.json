@@ -209,5 +209,34 @@
 
       "buildable": false
     }
+  },
+
+  {
+  "material_templates": {
+
+    "wood_floor_01": {
+      "name": "Wood Floor",
+      "texture": "/resources/textures/wood_floor.jpg",
+      "category": "floor"
+    },
+
+    "tile_white_01": {
+      "name": "White Tile",
+      "texture": "/resources/textures/tile_white.jpg",
+      "category": "floor"
+    },
+
+    "wallpaper_blue_01": {
+      "name": "Blue Wallpaper",
+      "texture": "/resources/textures/wallpaper_blue.jpg",
+      "category": "wall"
+    },
+
+    "grass_01": {
+      "name": "Grass",
+      "texture": "/resources/textures/grass.jpg",
+      "category": "terrain"
+    }
   }
+}
 }

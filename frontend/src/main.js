@@ -12,6 +12,14 @@ const mouse =
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x20242a);
 
+
+const floorRegistry = {};
+
+const textureLoader =
+  new THREE.TextureLoader();
+
+const materialCache = {};
+
 const camera = new THREE.OrthographicCamera(
   -20,
   20,
@@ -72,6 +80,143 @@ const props = {};
 const tiles = {};
 
 let definitions = {};
+
+function getMaterialTexture(materialId){
+
+  if(materialCache[materialId]){
+    return materialCache[materialId];
+  }
+
+  const materialTemplate =
+    definitions
+    ?.material_templates
+    ?.[materialId];
+
+  if(!materialTemplate?.texture){
+    return null;
+  }
+
+  const tex = textureLoader.load(
+    materialTemplate.texture
+  );
+
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+
+  tex.repeat.set(1,1);
+
+  materialCache[materialId] = tex;
+
+  return tex;
+}
+
+function createFloorMaterial(tileFloor){
+
+  const texture =
+    getMaterialTexture(
+      tileFloor.material
+    );
+
+  if(texture){
+
+    return new THREE.MeshStandardMaterial({
+      map: texture
+    });
+  }
+
+  let color = 0x777777;
+
+  if(tileFloor.type === "grass"){
+    color = 0x447744;
+  }
+
+  if(tileFloor.type === "staircase"){
+    color = 0xaa8833;
+  }
+
+  return new THREE.MeshStandardMaterial({
+    color
+  });
+}
+
+function createFloorMesh(x, y, tileFloor){
+
+  const geo =
+    new THREE.PlaneGeometry(1,1);
+
+  const mat =
+    createFloorMaterial(tileFloor);
+
+  const mesh =
+    new THREE.Mesh(geo, mat);
+
+  mesh.rotation.x =
+    -Math.PI / 2;
+
+  mesh.position.set(
+    x - 10,
+    0,
+    y - 7
+  );
+
+  mesh.receiveShadow = true;
+
+  return mesh;
+}
+
+function updateFloorplanFloors(state){
+
+  const active = new Set();
+
+  const floorplans =
+    state.floorplans || [];
+
+  for(const fp of floorplans){
+
+    for(const key in fp.tiles){
+
+      const tile = fp.tiles[key];
+
+      if(!tile.floor) continue;
+
+      const [x,y] = key
+        .split(",")
+        .map(Number);
+
+      const worldKey =
+        `${fp.id}_${x}_${y}`;
+
+      active.add(worldKey);
+
+      if(!floorRegistry[worldKey]){
+
+        const mesh =
+          createFloorMesh(
+            x + fp.x,
+            y + fp.y,
+            tile.floor
+          );
+
+        scene.add(mesh);
+
+        floorRegistry[worldKey] = mesh;
+      }
+    }
+  }
+
+  // cleanup
+  for(const key in floorRegistry){
+
+    if(active.has(key)) continue;
+
+    scene.remove(
+      floorRegistry[key]
+    );
+
+    delete floorRegistry[key];
+  }
+}
+
 
 function createTile(tile){
 
@@ -413,6 +558,7 @@ ws.onmessage = (e)=>{
 
   updateTiles(state);
   updateProps(state);
+  updateFloorplanFloors(state);
   updateCharacters(state);
 };
 
