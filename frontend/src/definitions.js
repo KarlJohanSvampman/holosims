@@ -101,7 +101,7 @@ async function loadDefinitions(){
   try {
 
     const res = await fetch(
-      '/api/editor/definitions?sim_id=default'
+      '/definitions.html?sim_id=default'
     );
 
     definitions = await res.json();
@@ -183,7 +183,9 @@ function renderTemplateList(){
     const row = document.createElement('div');
 
     row.className = 'templateRow';
-
+    if(id === currentTemplateId){
+    row.classList.add("active");
+    }
     row.textContent = id;
 
     row.onclick = ()=>{
@@ -287,7 +289,7 @@ window.saveDefinitions = async function(){
     }
 
     await fetch(
-      '/api/editor/definitions?sim_id=default',
+      '/definitions.html?sim_id=default',
       {
         method: 'POST',
         headers: {
