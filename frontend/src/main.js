@@ -14,7 +14,10 @@ scene.background = new THREE.Color(0x20242a);
 
 
 const floorRegistry = {};
+const wallRegistry = {};
 
+const WALL_HEIGHT = 2.8;
+const WALL_THICKNESS = 0.08;
 const textureLoader =
   new THREE.TextureLoader();
 
@@ -80,7 +83,460 @@ const props = {};
 const tiles = {};
 
 let definitions = {};
+function createWallMaterial(wallData){
 
+  const texture =
+    getMaterialTexture(
+      wallData.material
+    );
+
+  if(texture){
+
+    return new THREE.MeshStandardMaterial({
+      map: texture
+    });
+  }
+
+  let color = 0xdddddd;
+
+  if(wallData.type === "door"){
+    color = 0x996633;
+  }
+
+  if(wallData.type === "window"){
+    color = 0x66ccff;
+  }
+
+  return new THREE.MeshStandardMaterial({
+    color
+  });
+}
+function createWallMesh(
+  x,
+  y,
+  side,
+  wallData
+){
+
+  const horizontal =
+    side === "north"
+    || side === "south";
+
+  const width =
+    horizontal
+    ? 1
+    : WALL_THICKNESS;
+
+  const depth =
+    horizontal
+    ? WALL_THICKNESS
+    : 1;
+
+  const geo =
+    new THREE.BoxGeometry(
+      width,
+      WALL_HEIGHT,
+      depth
+    );
+
+  const mat =
+    createWallMaterial(wallData);
+
+  const mesh =
+    new THREE.Mesh(geo, mat);
+
+  // =========================
+  // POSITION
+  // =========================
+
+  let px = x;
+  let pz = y;
+
+  if(side === "north"){
+    pz -= 0.5;
+  }
+
+  if(side === "south"){
+    pz += 0.5;
+  }
+
+  if(side === "west"){
+    px -= 0.5;
+  }
+
+  if(side === "east"){
+    px += 0.5;
+  }
+
+  mesh.position.set(
+    px - 10,
+    WALL_HEIGHT / 2,
+    pz - 7
+  );
+
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  return mesh;
+}
+function createDoorSegment(
+  x,
+  y,
+  side,
+  wallData
+){
+
+  const group = new THREE.Group();
+
+  const horizontal =
+    side === "north"
+    || side === "south";
+
+  const frameThickness = 0.12;
+  const doorWidth = 0.55;
+
+  const leftWidth =
+    (1 - doorWidth) / 2;
+
+  const sideGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        leftWidth,
+        WALL_HEIGHT,
+        WALL_THICKNESS
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS,
+        WALL_HEIGHT,
+        leftWidth
+      );
+
+  const topGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        doorWidth,
+        0.45,
+        WALL_THICKNESS
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS,
+        0.45,
+        doorWidth
+      );
+
+  const mat =
+    createWallMaterial(wallData);
+
+  const left = new THREE.Mesh(sideGeo, mat);
+  const right = new THREE.Mesh(sideGeo, mat);
+  const top = new THREE.Mesh(topGeo, mat);
+
+  if(horizontal){
+
+    left.position.x =
+      -0.5 + leftWidth / 2;
+
+    right.position.x =
+      0.5 - leftWidth / 2;
+
+    top.position.y =
+      WALL_HEIGHT / 2 - 0.225;
+  }
+
+  else {
+
+    left.position.z =
+      -0.5 + leftWidth / 2;
+
+    right.position.z =
+      0.5 - leftWidth / 2;
+
+    top.position.y =
+      WALL_HEIGHT / 2 - 0.225;
+  }
+
+  group.add(left);
+  group.add(right);
+  group.add(top);
+
+  let px = x;
+  let pz = y;
+
+  if(side === "north") pz -= 0.5;
+  if(side === "south") pz += 0.5;
+  if(side === "west") px -= 0.5;
+  if(side === "east") px += 0.5;
+
+  group.position.set(
+    px - 10,
+    WALL_HEIGHT / 2,
+    pz - 7
+  );
+
+  return group;
+}
+function createWindowSegment(
+  x,
+  y,
+  side,
+  wallData
+){
+
+  const group = new THREE.Group();
+
+  const horizontal =
+    side === "north"
+    || side === "south";
+
+  const mat =
+    createWallMaterial(wallData);
+
+  const glassMat =
+    new THREE.MeshStandardMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.35
+    });
+
+  const lowerGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        1,
+        0.9,
+        WALL_THICKNESS
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS,
+        0.9,
+        1
+      );
+
+  const upperGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        1,
+        0.7,
+        WALL_THICKNESS
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS,
+        0.7,
+        1
+      );
+
+  const glassGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        0.85,
+        0.9,
+        WALL_THICKNESS / 2
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS / 2,
+        0.9,
+        0.85
+      );
+
+  const lower = new THREE.Mesh(lowerGeo, mat);
+  const upper = new THREE.Mesh(upperGeo, mat);
+  const glass = new THREE.Mesh(glassGeo, glassMat);
+
+  lower.position.y = -0.95;
+  upper.position.y = 1.05;
+
+  group.add(lower);
+  group.add(upper);
+  group.add(glass);
+
+  let px = x;
+  let pz = y;
+
+  if(side === "north") pz -= 0.5;
+  if(side === "south") pz += 0.5;
+  if(side === "west") px -= 0.5;
+  if(side === "east") px += 0.5;
+
+}
+function createWindowSegment(
+  x,
+  y,
+  side,
+  wallData
+){
+
+  const group = new THREE.Group();
+
+  const horizontal =
+    side === "north"
+    || side === "south";
+
+  const mat =
+    createWallMaterial(wallData);
+
+  const glassMat =
+    new THREE.MeshStandardMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.35
+    });
+
+  const lowerGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        1,
+        0.9,
+        WALL_THICKNESS
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS,
+        0.9,
+        1
+      );
+
+  const upperGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        1,
+        0.7,
+        WALL_THICKNESS
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS,
+        0.7,
+        1
+      );
+
+  const glassGeo =
+    horizontal
+    ? new THREE.BoxGeometry(
+        0.85,
+        0.9,
+        WALL_THICKNESS / 2
+      )
+    : new THREE.BoxGeometry(
+        WALL_THICKNESS / 2,
+        0.9,
+        0.85
+      );
+
+  const lower = new THREE.Mesh(lowerGeo, mat);
+  const upper = new THREE.Mesh(upperGeo, mat);
+  const glass = new THREE.Mesh(glassGeo, glassMat);
+
+  lower.position.y = -0.95;
+  upper.position.y = 1.05;
+
+  group.add(lower);
+  group.add(upper);
+  group.add(glass);
+
+  let px = x;
+  let pz = y;
+
+  if(side === "north") pz -= 0.5;
+  if(side === "south") pz += 0.5;
+  if(side === "west") px -= 0.5;
+  if(side === "east") px += 0.5;
+
+  group.position.set(
+    px - 10,
+    WALL_HEIGHT / 2,
+    pz - 7
+  );
+
+  return group;
+}
+function updateFloorplanWalls(state){
+
+  const active = new Set();
+
+  const floorplans =
+    state.floorplans || [];
+
+  for(const fp of floorplans){
+
+    for(const key in fp.tiles){
+
+      const tile = fp.tiles[key];
+
+      const walls =
+        tile.walls || {};
+
+      const [x,y] = key
+        .split(",")
+        .map(Number);
+
+      for(const side in walls){
+
+        const wallData = walls[side];
+
+        if(!wallData) continue;
+
+        const wallKey =
+          `${fp.id}_${x}_${y}_${side}`;
+
+        active.add(wallKey);
+
+        if(wallRegistry[wallKey]){
+          continue;
+        }
+
+        let mesh = null;
+
+        if(wallData.type === "wall"){
+
+          mesh = createWallMesh(
+            x + fp.x,
+            y + fp.y,
+            side,
+            wallData
+          );
+        }
+
+        else if(wallData.type === "door"){
+
+          mesh = createDoorSegment(
+            x + fp.x,
+            y + fp.y,
+            side,
+            wallData
+          );
+        }
+
+        else if(wallData.type === "window"){
+
+          mesh = createWindowSegment(
+            x + fp.x,
+            y + fp.y,
+            side,
+            wallData
+          );
+        }
+
+        if(mesh){
+
+          scene.add(mesh);
+
+          wallRegistry[
+            wallKey
+          ] = mesh;
+        }
+      }
+    }
+  }
+
+  // cleanup
+  for(const key in wallRegistry){
+
+    if(active.has(key)) continue;
+
+    scene.remove(
+      wallRegistry[key]
+    );
+
+    delete wallRegistry[key];
+  }
+}
 function getMaterialTexture(materialId){
 
   if(materialCache[materialId]){
@@ -559,6 +1015,7 @@ ws.onmessage = (e)=>{
   updateTiles(state);
   updateProps(state);
   updateFloorplanFloors(state);
+  updateFloorplanWalls(state);
   updateCharacters(state);
 };
 
