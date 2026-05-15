@@ -1,6 +1,18 @@
+import { detectRooms } from './roomDetection.js';
+import { generateRoomGraph } from './roomGraph.js';
+import { generateNavigationGrid } from './navigation.js';
 const canvas = document.getElementById("floorCanvas");
 const ctx = canvas.getContext("2d");
-
+const ROOM_TYPES = [
+  'bedroom',
+  'bathroom',
+  'kitchen',
+  'living_room',
+  'hallway',
+  'office',
+  'storage',
+  'garage'
+];
 const TILE_SIZE = 32;
 
 let definitions = {};
@@ -310,29 +322,37 @@ function renderWalls() {
   }
 }
 
-function renderRooms() {
+function renderRooms(floorplan){
 
-  for (const room of floorplan.rooms) {
+  for(const room of floorplan.rooms || []){
 
-    ctx.fillStyle =
-      ROOM_COLORS[room.type]
-      || "rgba(255,255,255,0.1)";
+    const color = Math.random() * 0xffffff;
 
-    for (const key of room.tiles) {
+    for(const tile of room.tiles){
 
-      const [x, y] = key
-        .split(",")
-        .map(Number);
+      const geo = new THREE.PlaneGeometry(1,1);
 
-      ctx.fillRect(
-        x * TILE_SIZE,
-        y * TILE_SIZE,
-        TILE_SIZE,
-        TILE_SIZE
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.2
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+
+      mesh.rotation.x = -Math.PI / 2;
+
+      mesh.position.set(
+        tile.x,
+        0.02,
+        tile.y
       );
+
+      scene.add(mesh);
     }
   }
 }
+
 
 function renderSelection() {
 
@@ -466,7 +486,16 @@ async function saveDefinitions(defs) {
 }
 
 async function saveFloorplan() {
+  function finalizeFloorplan(floorplan){
 
+    detectRooms(floorplan);
+
+    generateRoomGraph(floorplan);
+
+    generateNavigationGrid(floorplan);
+
+    return floorplan;
+  }
   const defs = definitions;
 
   defs.floorplan_templates =
@@ -475,7 +504,7 @@ async function saveFloorplan() {
   defs.floorplan_templates[
     floorplan.id
   ] = floorplan;
-
+  const finalPlan = finalizeFloorplan(plan);
   await saveDefinitions(defs);
 
   setStatus(`Saved ${floorplan.id}`);
