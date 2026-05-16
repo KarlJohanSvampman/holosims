@@ -2,17 +2,19 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls }
 from "three/examples/jsm/controls/OrbitControls.js";
+import { SkeletonUtils }
+from "three/examples/jsm/utils/SkeletonUtils.js";
 const selectable = [];
 const canvas = document.getElementById("c");
 const raycaster =
   new THREE.Raycaster();
-
+const modelCache = {};
 const mouse =
   new THREE.Vector2();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x20242a);
 
-
+const loadingProps = {};
 const floorRegistry = {};
 const wallRegistry = {};
 
@@ -55,6 +57,16 @@ window.addEventListener("resize", ()=>{
     window.innerWidth,
     window.innerHeight
   );
+
+  const aspect =
+    window.innerWidth /
+    window.innerHeight;
+
+  camera.left = -20 * aspect;
+  camera.right = 20 * aspect;
+
+  camera.top = 12;
+  camera.bottom = -12;
 
   camera.updateProjectionMatrix();
 });
@@ -275,88 +287,7 @@ function createDoorSegment(
 
   return group;
 }
-function createWindowSegment(
-  x,
-  y,
-  side,
-  wallData
-){
 
-  const group = new THREE.Group();
-
-  const horizontal =
-    side === "north"
-    || side === "south";
-
-  const mat =
-    createWallMaterial(wallData);
-
-  const glassMat =
-    new THREE.MeshStandardMaterial({
-      color: 0x88ccff,
-      transparent: true,
-      opacity: 0.35
-    });
-
-  const lowerGeo =
-    horizontal
-    ? new THREE.BoxGeometry(
-        1,
-        0.9,
-        WALL_THICKNESS
-      )
-    : new THREE.BoxGeometry(
-        WALL_THICKNESS,
-        0.9,
-        1
-      );
-
-  const upperGeo =
-    horizontal
-    ? new THREE.BoxGeometry(
-        1,
-        0.7,
-        WALL_THICKNESS
-      )
-    : new THREE.BoxGeometry(
-        WALL_THICKNESS,
-        0.7,
-        1
-      );
-
-  const glassGeo =
-    horizontal
-    ? new THREE.BoxGeometry(
-        0.85,
-        0.9,
-        WALL_THICKNESS / 2
-      )
-    : new THREE.BoxGeometry(
-        WALL_THICKNESS / 2,
-        0.9,
-        0.85
-      );
-
-  const lower = new THREE.Mesh(lowerGeo, mat);
-  const upper = new THREE.Mesh(upperGeo, mat);
-  const glass = new THREE.Mesh(glassGeo, glassMat);
-
-  lower.position.y = -0.95;
-  upper.position.y = 1.05;
-
-  group.add(lower);
-  group.add(upper);
-  group.add(glass);
-
-  let px = x;
-  let pz = y;
-
-  if(side === "north") pz -= 0.5;
-  if(side === "south") pz += 0.5;
-  if(side === "west") px -= 0.5;
-  if(side === "east") px += 0.5;
-
-}
 function createWindowSegment(
   x,
   y,
@@ -446,6 +377,54 @@ function createWindowSegment(
 
   return group;
 }
+
+async function loadModelCached(path){
+
+  // =========================
+  // CACHE HIT
+  // =========================
+
+  if(modelCache[path]){
+
+    return SkeletonUtils.clone(
+      modelCache[path]
+    );
+  }
+
+  // =========================
+  // FIRST LOAD
+  // =========================
+
+  return new Promise(
+
+    (resolve, reject)=>{
+
+      loader.load(
+
+        path,
+
+        (gltf)=>{
+
+          // store original
+          modelCache[path] =
+            gltf.scene;
+
+          // return clone
+          resolve(
+
+            SkeletonUtils.clone(
+              gltf.scene
+            )
+          );
+        },
+
+        undefined,
+
+        reject
+      );
+    }
+  );
+}
 function updateFloorplanWalls(state){
 
   const active = new Set();
@@ -453,22 +432,17 @@ function updateFloorplanWalls(state){
   const floorplans =
     state.floorplans || [];
 
- for(const fp of floorplans){
+  for(const fp of floorplans){
 
-  const template =
-    definitions
-    ?.floorplan_templates
-    ?.[fp.template];
+    const template =
+      definitions
+      ?.floorplan_templates
+      ?.[fp.template];
 
-  if(!template) continue;
-const template =
-  definitions
-  ?.floorplan_templates
-  ?.[fp.template];
+    if(!template) continue;
 
-if(!template) continue;
+    for(const key in template.tiles){
 
-for(const key in template.tiles){
       const tile = template.tiles[key];
 
       const walls =
@@ -617,7 +591,7 @@ function createFloorMesh(x, y, tileFloor){
 
   const mesh =
     new THREE.Mesh(geo, mat);
-
+  mesh.userData.ignoreRaycast = true;
   mesh.rotation.x =
     -Math.PI / 2;
 
@@ -714,7 +688,7 @@ function createTile(tile){
 
   mesh.position.set(
     tile.x - 10,
-    0,
+    0.01,
     tile.y - 7
   );
   mesh.userData = {
@@ -784,9 +758,17 @@ function createFallbackProp(prop){
   return mesh;
 }
 
-function updateProps(state){
+async function updateProps(state){
+
+  const active = new Set();
 
   for(const prop of state.props || []){
+
+    active.add(prop.id);
+
+    // =========================
+    // ALREADY EXISTS
+    // =========================
 
     if(props[prop.id]){
 
@@ -799,58 +781,106 @@ function updateProps(state){
       continue;
     }
 
+    // =========================
+    // CURRENTLY LOADING
+    // =========================
+
+    if(loadingProps[prop.id]){
+      continue;
+    }
+
+    loadingProps[prop.id] = true;
+
+    // =========================
+    // TEMPLATE
+    // =========================
+
     const template =
       definitions
       ?.prop_templates
       ?.[prop.template];
+
+    // =========================
+    // FALLBACK
+    // =========================
 
     if(!template?.model){
 
       props[prop.id] =
         createFallbackProp(prop);
 
+      delete loadingProps[prop.id];
+
       continue;
     }
 
-    loader.load(
+try {
 
-      template.model,
-
-      (gltf)=>{
-
-        const model = gltf.scene;
-
-        model.position.set(
-          prop.x - 10,
-          0,
-          prop.y - 7
-        );
-        model.userData = {
-
-            type: "prop",
-
-            id: prop.id,
-
-            template: prop.template
-          };
-
-        selectable.push(model);
-        scene.add(model);
-
-        props[prop.id] = model;
-      },
-
-      undefined,
-
-      ()=>{
-
-        props[prop.id] =
-          createFallbackProp(prop);
-      }
+  const model =
+    await loadModelCached(
+      template.model
     );
+
+  model.position.set(
+    prop.x - 10,
+    0,
+    prop.y - 7
+  );
+
+  model.userData = {
+
+    type: "prop",
+
+    id: prop.id,
+
+    template: prop.template
+  };
+
+  model.traverse((o)=>{
+
+    if(o.isMesh){
+
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+
+  selectable.push(model);
+
+  scene.add(model);
+
+  props[prop.id] = model;
+}
+
+catch(err){
+
+  console.error(
+    "Failed to load prop:",
+    template.model,
+    err
+  );
+
+  props[prop.id] =
+    createFallbackProp(prop);
+}
+
+delete loadingProps[prop.id];
   }
 
-   
+  // =========================
+  // CLEANUP REMOVED PROPS
+  // =========================
+
+  for(const id in props){
+
+    if(active.has(id)) continue;
+
+    const mesh = props[id];
+
+    scene.remove(mesh);
+
+    delete props[id];
+  }
 }
 
 function createFallbackCharacter(c){
@@ -887,13 +917,21 @@ function createFallbackCharacter(c){
   return mesh;
 }
 
-function updateCharacters(state){
+async function updateCharacters(state){
 
-  for(const [id,c]
+  const active = new Set();
+
+  for(const [id, c]
     of Object.entries(
       state.characters || {}
     )
   ){
+
+    active.add(id);
+
+    // =========================
+    // ALREADY EXISTS
+    // =========================
 
     if(sims[id]){
 
@@ -906,55 +944,105 @@ function updateCharacters(state){
       continue;
     }
 
+    // =========================
+    // CURRENTLY LOADING
+    // =========================
+
+    if(loadingCharacters[id]){
+      continue;
+    }
+
+    loadingCharacters[id] = true;
+
+    // =========================
+    // TEMPLATE
+    // =========================
+
     const template =
       definitions
       ?.character_templates
       ?.[c.template];
+
+    // =========================
+    // FALLBACK
+    // =========================
 
     if(!template?.model){
 
       sims[id] =
         createFallbackCharacter(c);
 
+      delete loadingCharacters[id];
+
       continue;
     }
 
-    loader.load(
+try {
 
-      template.model,
-
-      (gltf)=>{
-
-        const model = gltf.scene;
-
-        model.position.set(
-          c.x - 10,
-          0,
-          c.y - 7
-        );
-        model.userData = {
-
-          type: "character",
-
-          id: c.id,
-
-          name: c.name
-        };
-
-        selectable.push(model);
-        scene.add(model);
-
-        sims[id] = model;
-      },
-
-      undefined,
-
-      ()=>{
-
-        sims[id] =
-          createFallbackCharacter(c);
-      }
+  const model =
+    await loadModelCached(
+      template.model
     );
+
+  model.position.set(
+    c.x - 10,
+    0,
+    c.y - 7
+  );
+
+  model.userData = {
+
+    type: "character",
+
+    id: c.id,
+
+    name: c.name
+  };
+
+  model.traverse((o)=>{
+
+    if(o.isMesh){
+
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+
+  selectable.push(model);
+
+  scene.add(model);
+
+  sims[id] = model;
+}
+
+catch(err){
+
+  console.error(
+    "Failed to load character:",
+    template.model,
+    err
+  );
+
+  sims[id] =
+    createFallbackCharacter(c);
+}
+
+delete loadingCharacters[id];
+  }
+
+  // =========================
+  // CLEANUP REMOVED CHARACTERS
+  // =========================
+
+  for(const id in sims){
+
+    if(active.has(id)) continue;
+
+    const mesh = sims[id];
+
+    scene.remove(mesh);
+
+    delete sims[id];
   }
 }
 renderer.domElement.addEventListener(
@@ -977,10 +1065,16 @@ renderer.domElement.addEventListener(
     );
 
     const hits =
-      raycaster.intersectObjects(
-        selectable,
-        true
-      );
+      raycaster
+        .intersectObjects(
+          selectable,
+          true
+        )
+        .filter(
+          h =>
+            !h.object.userData
+            ?.ignoreRaycast
+        );
 
     if(!hits.length){
 
@@ -1023,7 +1117,7 @@ const ws = new WebSocket(
   `ws://${location.hostname}:8000/ws`
 );
 
-ws.onmessage = (e)=>{
+ws.onmessage = async (e)=>{
 
   const state =
     JSON.parse(e.data);
@@ -1032,10 +1126,10 @@ ws.onmessage = (e)=>{
     state.definitions || {};
 
   updateTiles(state);
-  updateProps(state);
+  await updateProps(state);
   updateFloorplanFloors(state);
   updateFloorplanWalls(state);
-  updateCharacters(state);
+  await updateCharacters(state);
 };
 
 function animate(){
