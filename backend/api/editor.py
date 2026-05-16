@@ -120,7 +120,7 @@ async def save_definitions(
     for fp_id, fp in floorplans.items():
 
         if "id" not in fp:
-        fp["id"] = fp_id
+            fp["id"] = fp_id
 
         cache_floorplan(
             fp_id,
