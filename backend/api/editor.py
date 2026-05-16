@@ -2,7 +2,10 @@ from fastapi import APIRouter, Request
 from pathlib import Path
 import json
 from db import load_world, save_world
-from systems.navigation import cache_floorplan
+from core.definitions import (
+    load_definitions,
+    defs_path
+)
 router = APIRouter()
 
 @router.get("/editor/world")

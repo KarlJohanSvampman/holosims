@@ -15,7 +15,7 @@ from api.assets import router as assets_router
 from api.editor import router as editor_router
 from api.editor import load_definitions, save_definitions
 from api.view import get_view
-
+from api.props import router as props_router
 app = FastAPI(title="Simsland")
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +30,7 @@ app.mount("/resources", StaticFiles(directory="/resources"), name="resources")
 clients = []
 app.include_router(view_router)
 app.include_router(assets_router, prefix="/api")
+app.include_router(props_router, prefix="/api")
 SIM_ID = "default"
 
 frontend_dir = Path(__file__).parent / "frontend"

@@ -194,39 +194,11 @@ def can_access_room(c, room):
 
 
 # =========================================================
-# CACHE FLOORPLAN
-# =========================================================
-
 def cache_floorplan(
     floorplan_id,
     floorplan
 ):
-    "room_routes": {}   
-    rooms = list(
-    floorplan.get(
-        "roomGraph",
-        {}
-    ).keys()
-)
 
-for a in rooms:
-
-    for b in rooms:
-
-        if a == b:
-            continue
-
-        route = find_room_path(
-            floorplan["roomGraph"],
-            a,
-            b
-        )
-
-        NAV_CACHE[
-            floorplan_id
-        ]["room_routes"][
-            (a, b)
-        ] = route
     NAV_CACHE[floorplan_id] = {
 
         "room_lookup":
@@ -236,11 +208,49 @@ for a in rooms:
         build_door_lookup(floorplan),
 
         "room_graph":
-        floorplan.get("roomGraph", {}),
+        floorplan.get(
+            "roomGraph",
+            {}
+        ),
 
         "navigation":
-        floorplan.get("navigation", {})
+        floorplan.get(
+            "navigation",
+            {}
+        ),
+
+        "room_routes": {}
     }
+
+    rooms = list(
+
+        floorplan.get(
+            "roomGraph",
+            {}
+        ).keys()
+    )
+
+    for a in rooms:
+
+        for b in rooms:
+
+            if a == b:
+                continue
+
+            route = find_room_path(
+
+                floorplan["roomGraph"],
+
+                a,
+
+                b
+            )
+
+            NAV_CACHE[
+                floorplan_id
+            ]["room_routes"][
+                (a, b)
+            ] = route
 
 
 # =========================================================

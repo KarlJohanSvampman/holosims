@@ -2,6 +2,15 @@ import psycopg2, json, os
 from core.cache import get_world_cache, set_world_cache
 from core.cache import get_char_cache, set_char_cache
 from world.generate_world import generate_initial_world
+from systems.prop_index import (
+    cache_prop_index
+)
+from core.definitions import (
+    load_definitions
+)
+from systems.room_assignment import (
+    assign_prop_rooms
+)
 import time
 #conn = psycopg2.connect(
 #    dbname=os.getenv("POSTGRES_DB","sim"),
@@ -49,19 +58,110 @@ def init_db():
  
 def load_world(sim_id):
 
-    # 🔥 1. try cache
+    # =====================================
+    # TRY CACHE
+    # =====================================
+
     cached = get_world_cache(sim_id)
+
     if cached:
         return cached
 
-    # 🔥 2. fallback DB
-    with conn.cursor() as cur:
-        cur.execute("SELECT data FROM world WHERE simulation_id=%s", (sim_id,))
-        row = cur.fetchone()
-        world = row[0] if row else {"tick": 0, "characters": {}}
+    # =====================================
+    # LOAD DB
+    # =====================================
 
-    # 🔥 3. cache it
-    set_world_cache(sim_id, world)
+    with conn.cursor() as cur:
+
+        cur.execute(
+
+            """
+            SELECT data
+            FROM world
+            WHERE simulation_id=%s
+            """,
+
+            (sim_id,)
+        )
+
+        row = cur.fetchone()
+
+        world = (
+
+            row[0]
+
+            if row else {
+
+                "tick": 0,
+
+                "characters": {},
+
+                "props": []
+            }
+        )
+
+    # =====================================
+    # LOAD DEFINITIONS
+    # =====================================
+
+    definitions = load_definitions(
+        sim_id
+    )
+
+    # =====================================
+    # FIND FLOORPLAN
+    # =====================================
+
+    floorplans = definitions.get(
+        "floorplan_templates",
+        {}
+    )
+
+    default_floorplan = None
+
+    if floorplans:
+
+        default_floorplan = next(
+            iter(floorplans.values())
+        )
+
+    # =====================================
+    # AUTO ASSIGN PROP ROOMS
+    # =====================================
+
+    if default_floorplan:
+
+        assign_prop_rooms(
+
+            default_floorplan,
+
+            world.get(
+                "props",
+                []
+            )
+        )
+
+    # =====================================
+    # BUILD PROP INDEX
+    # =====================================
+
+    cache_prop_index(
+
+        sim_id,
+
+        world,
+
+        definitions
+    )
+
+    # =====================================
+    # CACHE WORLD
+    # =====================================
+
+    set_world_cache(
+        sim_id,
+        world
+    )
 
     return world
 
