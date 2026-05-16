@@ -11,6 +11,9 @@ from core.definitions import (
 from systems.room_assignment import (
     assign_prop_rooms
 )
+from systems.building_manager import (
+    build_world_geometry
+)
 import time
 #conn = psycopg2.connect(
 #    dbname=os.getenv("POSTGRES_DB","sim"),
@@ -107,7 +110,10 @@ def load_world(sim_id):
     definitions = load_definitions(
         sim_id
     )
-
+    build_world_geometry(
+        sim_id,
+        world
+    )
     # =====================================
     # FIND FLOORPLAN
     # =====================================
