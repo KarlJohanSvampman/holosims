@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls }
 from "three/examples/jsm/controls/OrbitControls.js";
-import { SkeletonUtils }
+import { clone }
 from "three/examples/jsm/utils/SkeletonUtils.js";
 const selectable = [];
 const canvas = document.getElementById("c");
@@ -15,6 +15,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x20242a);
 
 const loadingProps = {};
+const loadingCharacters = {};
 const floorRegistry = {};
 const wallRegistry = {};
 
@@ -386,7 +387,7 @@ async function loadModelCached(path){
 
   if(modelCache[path]){
 
-    return SkeletonUtils.clone(
+    return clone(
       modelCache[path]
     );
   }
@@ -412,7 +413,7 @@ async function loadModelCached(path){
           // return clone
           resolve(
 
-            SkeletonUtils.clone(
+            clone(
               gltf.scene
             )
           );
