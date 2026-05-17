@@ -14,7 +14,9 @@ import {
 
   resolveProp,
 
-  resolveCharacter
+  resolveCharacter,
+
+  getMaterialTemplate
 
 } from "./templates.js";
 const selectable = [];
@@ -448,16 +450,17 @@ function updateFloorplanWalls(state){
 
   for(const fp of floorplans){
 
-    const template =
-      definitions
-      ?.floorplan_templates
-      ?.[fp.template];
+    const building =
+      resolveFloorplan(
+        definitions,
+        fp.building
+      );
 
-    if(!template) continue;
+    if(!building) continue;
 
-    for(const key in template.tiles){
+    for(const key in building.tiles){
 
-      const tile = template.tiles[key];
+      const tile = building.tiles[key];
 
       const walls =
         tile.walls || {};
@@ -473,7 +476,7 @@ function updateFloorplanWalls(state){
         if(!wallData) continue;
 
         const wallKey =
-          `${fp.id}_${x}_${y}_${side}`;
+          `${building.id}_${x}_${y}_${side}`;
 
         active.add(wallKey);
 
@@ -486,8 +489,8 @@ function updateFloorplanWalls(state){
         if(wallData.type === "wall"){
 
           mesh = createWallMesh(
-            x + fp.x,
-            y + fp.y,
+            x + building.x,
+            y + building.y,
             side,
             wallData
           );
@@ -496,8 +499,8 @@ function updateFloorplanWalls(state){
         else if(wallData.type === "door"){
 
           mesh = createDoorSegment(
-            x + fp.x,
-            y + fp.y,
+            x + building.x,
+            y + building.y,
             side,
             wallData
           );
@@ -506,8 +509,8 @@ function updateFloorplanWalls(state){
         else if(wallData.type === "window"){
 
           mesh = createWindowSegment(
-            x + fp.x,
-            y + fp.y,
+            x + building.x,
+            y + building.y,
             side,
             wallData
           );
@@ -544,9 +547,10 @@ function getMaterialTexture(materialId){
   }
 
   const materialTemplate =
-    definitions
-    ?.material_templates
-    ?.[materialId];
+    getMaterialTemplate(
+      definitions,
+      materialId
+    );
 
   if(!materialTemplate?.texture){
     return null;
@@ -629,16 +633,17 @@ function updateFloorplanFloors(state){
 
 for(const fp of floorplans){
 
-  const template =
-    definitions
-    ?.floorplan_templates
-    ?.[fp.template];
+  const building =
+    resolveFloorplan(
+      definitions,
+      fp.building
+    );
 
-  if(!template) continue;
+  if(!building) continue;
 
-  for(const key in template.tiles){
+  for(const key in building.tiles){
 
-      const tile = template.tiles[key];
+      const tile = building.tiles[key];
 
       if(!tile.floor) continue;
 
@@ -655,8 +660,8 @@ for(const fp of floorplans){
 
         const mesh =
           createFloorMesh(
-            x + fp.x,
-            y + fp.y,
+            x + building.x,
+            y + building.y,
             tile.floor
           );
 

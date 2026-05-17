@@ -233,3 +233,21 @@ export function resolveFloorplan(
     building
   );
 }
+
+
+export function getMaterialTemplate(
+
+  definitions,
+
+  materialId
+){
+
+  return getTemplate(
+
+    definitions,
+
+    "material_templates",
+
+    materialId
+  );
+}

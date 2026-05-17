@@ -472,7 +472,7 @@ function setStatus(text) {
 async function loadDefinitions() {
 
   const res = await fetch(
-    "/api/editor/definitions?sim_id=default"
+    "/api/editor/definitions.html?sim_id=default"
   );
 
   definitions = await res.json();
@@ -513,7 +513,7 @@ function populateMaterials() {
 async function saveDefinitions(defs) {
 
   await fetch(
-    "/api/editor/definitions?sim_id=default",
+    "/api/editor/definitions.html?sim_id=default",
     {
       method: "POST",
 
