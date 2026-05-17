@@ -4,6 +4,19 @@ import { OrbitControls }
 from "three/examples/jsm/controls/OrbitControls.js";
 import { clone }
 from "three/examples/jsm/utils/SkeletonUtils.js";
+import {
+
+  getPropTemplate,
+
+  getCharacterTemplate,
+
+  getFloorplanTemplate,
+
+  resolveProp,
+
+  resolveCharacter
+
+} from "./templates.js";
 const selectable = [];
 const canvas = document.getElementById("c");
 const raycaster =
@@ -796,16 +809,17 @@ async function updateProps(state){
     // TEMPLATE
     // =========================
 
-    const template =
-      definitions
-      ?.prop_templates
-      ?.[prop.template];
+    const resolved =
+      resolveProp(
+        definitions,
+        prop
+      );
 
     // =========================
     // FALLBACK
     // =========================
 
-    if(!template?.model){
+    if(!resolved?.model){
 
       props[prop.id] =
         createFallbackProp(prop);
@@ -819,7 +833,7 @@ try {
 
   const model =
     await loadModelCached(
-      template.model
+      resolved.model
     );
 
   model.position.set(
@@ -857,7 +871,7 @@ catch(err){
 
   console.error(
     "Failed to load prop:",
-    template.model,
+    resolved.model,
     err
   );
 
@@ -959,16 +973,16 @@ async function updateCharacters(state){
     // TEMPLATE
     // =========================
 
-    const template =
-      definitions
-      ?.character_templates
-      ?.[c.template];
-
+    const character =
+      resolveCharacter(
+        definitions,
+        c
+      );
     // =========================
     // FALLBACK
     // =========================
 
-    if(!template?.model){
+    if(!character?.model){
 
       sims[id] =
         createFallbackCharacter(c);
@@ -982,7 +996,7 @@ try {
 
   const model =
     await loadModelCached(
-      template.model
+      character.model
     );
 
   model.position.set(
@@ -1020,7 +1034,7 @@ catch(err){
 
   console.error(
     "Failed to load character:",
-    template.model,
+    character.model,
     err
   );
 

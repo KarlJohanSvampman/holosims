@@ -1,4 +1,5 @@
 from systems.navigation import (
+
     get_room_at_position
 )
 
@@ -9,16 +10,16 @@ from systems.navigation import (
 
 def assign_prop_room(
 
-    floorplan,
+    building,
 
     prop
 ):
 
-    floorplan_id = floorplan["id"]
+    building_id = building["id"]
 
     room_id = get_room_at_position(
 
-        floorplan_id,
+        building_id,
 
         prop["x"],
 
@@ -27,16 +28,18 @@ def assign_prop_room(
 
     prop["room_id"] = room_id
 
+    prop["building_id"] = building_id
+
     return room_id
 
 
 # =========================================================
-# ASSIGN ALL
+# ASSIGN ALL PROPS
 # =========================================================
 
 def assign_prop_rooms(
 
-    floorplan,
+    building,
 
     props
 ):
@@ -44,6 +47,71 @@ def assign_prop_rooms(
     for prop in props:
 
         assign_prop_room(
-            floorplan,
+
+            building,
+
             prop
         )
+
+
+# =========================================================
+# ASSIGN CHARACTER ROOM
+# =========================================================
+
+def assign_character_room(
+
+    building,
+
+    character
+):
+
+    building_id = building["id"]
+
+    room_id = get_room_at_position(
+
+        building_id,
+
+        character["x"],
+
+        character["y"]
+    )
+
+    character["room_id"] = room_id
+
+    character["building_id"] = building_id
+
+    return room_id
+
+
+# =========================================================
+# ASSIGN ALL CHARACTERS
+# =========================================================
+
+def assign_character_rooms(
+
+    building,
+
+    characters
+):
+
+    for c in characters:
+
+        assign_character_room(
+
+            building,
+
+            c
+        )
+
+
+# =========================================================
+# CLEAR OUTDOOR ENTITY
+# =========================================================
+
+def clear_outdoor_assignment(
+    entity
+):
+
+    entity["room_id"] = None
+
+    entity["building_id"] = None

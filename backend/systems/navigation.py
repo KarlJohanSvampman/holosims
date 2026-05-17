@@ -3,6 +3,13 @@ from collections import deque
 
 from systems.navigation_cache import NAV_CACHE
 
+from systems.templates import (
+
+    get_floorplan_template,
+
+    resolve_floorplan
+)
+
 
 # =========================================================
 # HEURISTIC
@@ -11,7 +18,9 @@ from systems.navigation_cache import NAV_CACHE
 def heuristic(a, b):
 
     return (
+
         abs(a[0] - b[0])
+
         + abs(a[1] - b[1])
     )
 
@@ -24,7 +33,10 @@ def astar(start, goal, blocked):
 
     open_set = []
 
-    heappush(open_set, (0, start))
+    heappush(
+        open_set,
+        (0, start)
+    )
 
     came_from = {}
 
@@ -34,7 +46,9 @@ def astar(start, goal, blocked):
 
     while open_set:
 
-        _, current = heappop(open_set)
+        _, current = heappop(
+            open_set
+        )
 
         if current == goal:
 
@@ -55,8 +69,11 @@ def astar(start, goal, blocked):
         neighbors = [
 
             (x + 1, y),
+
             (x - 1, y),
+
             (x, y + 1),
+
             (x, y - 1)
         ]
 
@@ -69,15 +86,24 @@ def astar(start, goal, blocked):
                 g_score[current] + 1
             )
 
-            if tentative < g_score.get(n, 999999):
+            if tentative < g_score.get(
+                n,
+                999999
+            ):
 
                 came_from[n] = current
 
                 g_score[n] = tentative
 
-                f = tentative + heuristic(n, goal)
+                f = (
+                    tentative
+                    + heuristic(n, goal)
+                )
 
-                heappush(open_set, (f, n))
+                heappush(
+                    open_set,
+                    (f, n)
+                )
 
     return []
 
@@ -90,12 +116,21 @@ def build_room_lookup(floorplan):
 
     lookup = {}
 
-    for room in floorplan.get("rooms", []):
+    for room in floorplan.get(
+        "rooms",
+        []
+    ):
 
-        for tile in room.get("tiles", []):
+        for tile in room.get(
+            "tiles",
+            []
+        ):
 
             lookup[
-                (tile["x"], tile["y"])
+                (
+                    tile["x"],
+                    tile["y"]
+                )
             ] = room["id"]
 
     return lookup
@@ -109,10 +144,16 @@ def build_door_lookup(floorplan):
 
     lookup = {}
 
-    for door in floorplan.get("doors", []):
+    for door in floorplan.get(
+        "doors",
+        []
+    ):
 
         lookup[
-            (door["x"], door["y"])
+            (
+                door["x"],
+                door["y"]
+            )
         ] = door
 
     return lookup
@@ -122,9 +163,15 @@ def build_door_lookup(floorplan):
 # ROOM PATH BFS
 # =========================================================
 
-def find_room_path(graph, start, goal):
+def find_room_path(
+    graph,
+    start,
+    goal
+):
 
-    queue = deque([[start]])
+    queue = deque([
+        [start]
+    ])
 
     visited = set()
 
@@ -142,9 +189,17 @@ def find_room_path(graph, start, goal):
 
         visited.add(room)
 
-        for n in graph[room]["neighbors"]:
+        for n in graph.get(
+            room,
+            {}
+        ).get(
+            "neighbors",
+            []
+        ):
 
-            queue.append(path + [n])
+            queue.append(
+                path + [n]
+            )
 
     return []
 
@@ -154,16 +209,31 @@ def find_room_path(graph, start, goal):
 # =========================================================
 
 def find_connecting_door(
+
     floorplan,
+
     room_a,
+
     room_b
 ):
 
-    for door in floorplan.get("doors", []):
+    for door in floorplan.get(
+        "doors",
+        []
+    ):
 
-        connects = door.get("connects", [])
+        connects = door.get(
+            "connects",
+            []
+        )
 
-        if set(connects) == {room_a, room_b}:
+        if set(connects) == {
+
+            room_a,
+
+            room_b
+        }:
+
             return door
 
     return None
@@ -173,7 +243,10 @@ def find_connecting_door(
 # ROOM ACCESS
 # =========================================================
 
-def can_access_room(c, room):
+def can_access_room(
+    c,
+    room
+):
 
     privacy = room.get(
         "privacy",
@@ -186,7 +259,11 @@ def can_access_room(c, room):
     if privacy == "private":
 
         return (
-            room.get("owner_character_id")
+
+            room.get(
+                "owner_character_id"
+            )
+
             == c["id"]
         )
 
@@ -194,30 +271,39 @@ def can_access_room(c, room):
 
 
 # =========================================================
+# CACHE FLOORPLAN
+# =========================================================
+
 def cache_floorplan(
-    floorplan_id,
+
+    building_id,
+
     floorplan
 ):
 
-    NAV_CACHE[floorplan_id] = {
+    NAV_CACHE[building_id] = {
 
         "room_lookup":
-        build_room_lookup(floorplan),
+            build_room_lookup(
+                floorplan
+            ),
 
         "door_lookup":
-        build_door_lookup(floorplan),
+            build_door_lookup(
+                floorplan
+            ),
 
         "room_graph":
-        floorplan.get(
-            "roomGraph",
-            {}
-        ),
+            floorplan.get(
+                "roomGraph",
+                {}
+            ),
 
         "navigation":
-        floorplan.get(
-            "navigation",
-            {}
-        ),
+            floorplan.get(
+                "navigation",
+                {}
+            ),
 
         "room_routes": {}
     }
@@ -239,7 +325,10 @@ def cache_floorplan(
 
             route = find_room_path(
 
-                floorplan["roomGraph"],
+                floorplan.get(
+                    "roomGraph",
+                    {}
+                ),
 
                 a,
 
@@ -247,8 +336,10 @@ def cache_floorplan(
             )
 
             NAV_CACHE[
-                floorplan_id
-            ]["room_routes"][
+                building_id
+            ][
+                "room_routes"
+            ][
                 (a, b)
             ] = route
 
@@ -258,13 +349,16 @@ def cache_floorplan(
 # =========================================================
 
 def get_room_at_position(
-    floorplan_id,
+
+    building_id,
+
     x,
+
     y
 ):
 
     nav = NAV_CACHE.get(
-        floorplan_id
+        building_id
     )
 
     if not nav:
@@ -276,12 +370,15 @@ def get_room_at_position(
 
 
 # =========================================================
-# ROOM-TO-ROOM ROUTE
+# ROOM ROUTE
 # =========================================================
 
 def build_room_route(
+
     floorplan,
+
     start_room,
+
     target_room
 ):
 
@@ -291,26 +388,39 @@ def build_room_route(
     )
 
     return find_room_path(
+
         graph,
+
         start_room,
+
         target_room
     )
 
 
 # =========================================================
-# FULL BUILDING PATH
+# BUILDING ASTAR
 # =========================================================
 
 def build_building_path(
+
     floorplan,
+
     start_tile,
+
     target_tile
 ):
 
     blocked_raw = (
-    floorplan
-    .get("navigation", {})
-    .get("blocked", [])
+
+        floorplan
+        .get(
+            "navigation",
+            {}
+        )
+        .get(
+            "blocked",
+            []
+        )
     )
 
     blocked = set()
@@ -324,58 +434,88 @@ def build_building_path(
             blocked.add((
                 int(x),
                 int(y)
-         ))
+            ))
 
         else:
 
-            blocked.add(tuple(b))
+            blocked.add(
+                tuple(b)
+            )
 
     return astar(
+
         start_tile,
+
         target_tile,
+
         blocked
     )
 
 
 # =========================================================
-# MULTI-ROOM PATH
+# MULTI ROOM PATH
 # =========================================================
 
 def build_multi_room_path(
+
+    building_id,
+
     floorplan,
+
     start_tile,
+
     target_tile
 ):
 
-    floorplan_id = floorplan["id"]
-
     start_room = get_room_at_position(
-        floorplan_id,
+
+        building_id,
+
         start_tile[0],
+
         start_tile[1]
     )
 
     target_room = get_room_at_position(
-        floorplan_id,
+
+        building_id,
+
         target_tile[0],
+
         target_tile[1]
     )
 
-    if not start_room or not target_room:
+    if not start_room:
         return []
 
-    # same room
+    if not target_room:
+        return []
+
+    # =====================================
+    # SAME ROOM
+    # =====================================
+
     if start_room == target_room:
 
         return build_building_path(
+
             floorplan,
+
             start_tile,
+
             target_tile
         )
 
+    # =====================================
+    # ROOM ROUTE
+    # =====================================
+
     room_route = build_room_route(
+
         floorplan,
+
         start_room,
+
         target_room
     )
 
@@ -386,16 +526,25 @@ def build_multi_room_path(
 
     current_tile = start_tile
 
+    # =====================================
+    # ROOM-TO-ROOM
+    # =====================================
+
     for i in range(
+
         len(room_route) - 1
     ):
 
         room_a = room_route[i]
+
         room_b = room_route[i + 1]
 
         door = find_connecting_door(
+
             floorplan,
+
             room_a,
+
             room_b
         )
 
@@ -403,13 +552,18 @@ def build_multi_room_path(
             continue
 
         door_tile = (
+
             door["x"],
+
             door["y"]
         )
 
         segment = build_building_path(
+
             floorplan,
+
             current_tile,
+
             door_tile
         )
 
@@ -417,12 +571,21 @@ def build_multi_room_path(
 
         current_tile = door_tile
 
+    # =====================================
+    # FINAL SEGMENT
+    # =====================================
+
     final_segment = build_building_path(
+
         floorplan,
+
         current_tile,
+
         target_tile
     )
 
-    final_path.extend(final_segment)
+    final_path.extend(
+        final_segment
+    )
 
     return final_path

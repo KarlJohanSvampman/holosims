@@ -1,6 +1,11 @@
 import { detectRooms } from './roomDetection.js';
 import { generateRoomGraph } from './roomGraph.js';
 import { generateNavigationGrid } from './navigation.js';
+import {
+
+  resolveFloorplan
+
+} from "./templates.js";
 const FLOORPLAN_CACHE = {
 
   roomsDirty: true,
@@ -17,16 +22,7 @@ const FLOORPLAN_CACHE = {
 };
 const canvas = document.getElementById("floorCanvas");
 const ctx = canvas.getContext("2d");
-const ROOM_TYPES = [
-  'bedroom',
-  'bathroom',
-  'kitchen',
-  'living_room',
-  'hallway',
-  'office',
-  'storage',
-  'garage'
-];
+
 const TILE_SIZE = 32;
 
 let definitions = {};
@@ -67,11 +63,29 @@ const ROOM_COLORS = {
 };
 
 let floorplan = {
+
   id: "starter_house",
+
+  category: "residential",
+
+  tags: [
+
+    "small",
+
+    "starter"
+  ],
+
   width: 20,
+
   height: 20,
+
   tiles: {},
-  rooms: []
+
+  rooms: [],
+
+  roomGraph: {},
+
+  navigation: {}
 };
 function invalidateNavigation(){
 
@@ -343,33 +357,30 @@ function renderWalls() {
   }
 }
 
-function renderRooms(floorplan){
+function renderRooms(){
 
   for(const room of floorplan.rooms || []){
 
-    const color = Math.random() * 0xffffff;
+    ctx.fillStyle =
+
+      ROOM_COLORS[
+        room.type
+      ]
+
+      || "rgba(255,255,255,0.15)";
 
     for(const tile of room.tiles){
 
-      const geo = new THREE.PlaneGeometry(1,1);
+      ctx.fillRect(
 
-      const mat = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.2
-      });
+        tile.x * TILE_SIZE,
 
-      const mesh = new THREE.Mesh(geo, mat);
+        tile.y * TILE_SIZE,
 
-      mesh.rotation.x = -Math.PI / 2;
+        TILE_SIZE,
 
-      mesh.position.set(
-        tile.x,
-        0.02,
-        tile.y
+        TILE_SIZE
       );
-
-      scene.add(mesh);
     }
   }
 }
@@ -382,10 +393,11 @@ function renderSelection() {
 
   for (const key of selectedTiles) {
 
-    const [x, y] = key
-      .split(",")
-      .map(Number);
+    const parts = key.split(",");
 
+    const x = parseInt(parts[0]);
+
+    const y = parseInt(parts[1]);
     ctx.fillRect(
       x * TILE_SIZE,
       y * TILE_SIZE,
@@ -395,24 +407,32 @@ function renderSelection() {
   }
 }
 
-function render() {
+function render(){
 
   ctx.clearRect(
+
     0,
     0,
+
     canvas.width,
+
     canvas.height
   );
 
-  renderTiles();
-  renderRooms();
-  renderSelection();
-  renderWalls();
   renderGrid();
+
+  renderTiles();
+
+  renderRooms();
+
+  renderSelection();
+
+  renderWalls();
 
   document.getElementById(
     "selectionInfo"
   ).innerHTML =
+
     `${selectedTiles.size} selected`;
 }
 
@@ -585,28 +605,37 @@ async function saveFloorplan(){
   );
 }
 
-async function loadFloorplan() {
+async function loadFloorplan(){
 
   const id = prompt(
     "Floorplan ID"
   );
 
-  if (!id) return;
+  if(!id) return;
 
   const fp =
-    definitions.floorplan_templates?.[id];
+    definitions
+    ?.floorplan_templates
+    ?.[id];
 
-  if (!fp) {
+  if(!fp){
+
     alert("Not found");
+
     return;
   }
 
-  floorplan = fp;
+  floorplan = structuredClone(fp);
+
+  rebuildFloorplanCaches();
 
   updateRoomList();
+
   render();
 
-  setStatus(`Loaded ${id}`);
+  setStatus(
+    `Loaded ${id}`
+  );
 }
 
 // TOOL BUTTONS
@@ -647,24 +676,49 @@ document.getElementById(
   "createRoomBtn"
 ).onclick = () => {
 
-  if (selectedTiles.size === 0) {
+  if(selectedTiles.size === 0){
     return;
   }
+
   invalidateNavigation();
+
   const type = prompt(
-    "Room Type:\n" +
-    ROOM_TYPES.join(", ")
+
+    "Room Type:\n"
+
+    + ROOM_TYPES.join(", ")
   );
 
-  if (!type) return;
+  if(!type) return;
 
-  const tags =
+  const tags = (
+
     prompt(
       "Tags (comma separated)"
-    ) || "";
+    )
+
+    || ""
+  );
 
   const id =
-    `${type}_${floorplan.rooms.length}`;
+
+    `${type}_${
+      floorplan.rooms.length
+    }`;
+
+  const tiles = [];
+
+  for(const key of selectedTiles){
+
+    const [x, y] = key
+      .split(",")
+      .map(Number);
+
+    tiles.push({
+      x,
+      y
+    });
+  }
 
   floorplan.rooms.push({
 
@@ -677,17 +731,20 @@ document.getElementById(
       .map(t => t.trim())
       .filter(Boolean),
 
-    tiles: [...selectedTiles]
+    tiles
   });
 
   selectedTiles.clear();
 
+  rebuildFloorplanCaches();
+
   updateRoomList();
+
   render();
 };
 
-// NEW FLOORPLAN
 
+// NEW FLOORPLAN
 document.getElementById(
   "newFloorplanBtn"
 ).onclick = () => {
@@ -695,17 +752,26 @@ document.getElementById(
   floorplan = {
 
     id:
+
       document.getElementById(
         "floorplanId"
-      ).value || "new_floorplan",
+      ).value
+
+      || "new_floorplan",
+
+    category: "residential",
+
+    tags: [],
 
     width: parseInt(
+
       document.getElementById(
         "floorplanWidth"
       ).value
     ),
 
     height: parseInt(
+
       document.getElementById(
         "floorplanHeight"
       ).value
@@ -713,13 +779,19 @@ document.getElementById(
 
     tiles: {},
 
-    rooms: []
+    rooms: [],
+
+    roomGraph: {},
+
+    navigation: {}
   };
 
+  invalidateNavigation();
+
   updateRoomList();
+
   render();
 };
-
 // SAVE / LOAD
 
 document.getElementById(
